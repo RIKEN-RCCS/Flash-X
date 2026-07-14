@@ -1,0 +1,23 @@
+# CodeScribe executor-reviewer loop: modularize the Multipole_new unit.
+# Run from the repo root; see run.sh. [tools].bash is a HARD guardrail — the
+# execution agent can run ONLY these bare commands. No `make`/`setup`: a full
+# build is the human verification boundary (SPEC.md), not the loop's.
+
+[tools]
+bash = ["grep", "find", "rg", "gfortran"]
+
+[[chat.user]]
+content = '''
+Advance one item of a Fortran modularization loop, then stop. Work from these
+files (paths relative to the repo root):
+
+- dev/loops/modularize-unit/PLAN.md — the target unit and checklist. Pick the
+  next `[ ]`, work ONE subroutine, mark it `[~]`, add a Pass-log line. Never `[x]`.
+- dev/loops/modularize-unit/SPEC.md — what "done" means, the boundaries, and the
+  checks to run and report.
+- The skill for the item you picked, followed exactly:
+    dev/skills/fortran-remove-use-statements/SKILL.md
+    dev/skills/move-allocatable-arrays-into-data-module/SKILL.md
+
+PLAN.md is the only file you may edit; SPEC.md and the skills are read-only.
+'''
