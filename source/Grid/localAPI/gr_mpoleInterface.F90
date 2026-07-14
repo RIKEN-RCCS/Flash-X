@@ -30,11 +30,6 @@ module gr_mpoleInterface
   implicit none
 
   interface
-     subroutine gr_mpoleAllocateRadialArrays ()
-     end subroutine gr_mpoleAllocateRadialArrays
-  end interface
-
-  interface
      subroutine gr_mpoleCen1Dspherical (idensvar)
        integer, intent (in) :: idensvar
      end subroutine gr_mpoleCen1Dspherical
