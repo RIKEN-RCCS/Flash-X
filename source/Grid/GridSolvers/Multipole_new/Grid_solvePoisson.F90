@@ -79,6 +79,10 @@ subroutine Grid_solvePoisson (iSoln,                   &
                                 gr_mpoleQused,                 &
                                 gr_mpoleMaxLM,                 &
                                 gr_mpoleMaxQ,                  &
+                                gr_mpoleGravityConstant,       &
+                                gr_mpoleFourPiInv,             &
+                                gr_mpoleGeometry,              &
+                                gr_mpoleRequest,               &
                                 gr_mpoleAllocateRadialArrays
 
   implicit none
@@ -145,7 +149,15 @@ subroutine Grid_solvePoisson (iSoln,                   &
   call Timers_stop              ("gr_mpoleCollectMoments")   ! see 'Note' above
   
   call Timers_start             ("gr_mpolePotentials")
-  call gr_mpolePotentials       (iSoln, poisFact)
+  call gr_mpolePotentials       (iSoln, poisFact,               &
+                                   gr_mpoleMomentR,              &
+                                   gr_mpoleMomentI,              &
+                                   gr_mpoleScratch,              &
+                                   gr_mpoleMaxQ,                 &
+                                   gr_mpoleGravityConstant,      &
+                                   gr_mpoleFourPiInv,            &
+                                   gr_mpoleGeometry,             &
+                                   gr_mpoleRequest)
   call Timers_stop              ("gr_mpolePotentials")
   
   !

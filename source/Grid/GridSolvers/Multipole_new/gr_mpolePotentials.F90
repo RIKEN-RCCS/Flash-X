@@ -18,7 +18,15 @@
 !! SYNOPSIS
 !!
 !!  gr_mpolePotentials  (integer, intent(in) :: ipotvar,
-!!                       real,    intent(in) :: Poisson_factor )
+!!                       real,    intent(in) :: Poisson_factor,
+!!                       real,           intent(inout) :: gr_mpoleMomentR (:,:),
+!!                       real,           intent(inout) :: gr_mpoleMomentI (:,:),
+!!                       real,           intent(inout) :: gr_mpoleScratch (:,:,:),
+!!                       integer,           intent(in)    :: gr_mpoleMaxQ,
+!!                       real,              intent(out)   :: gr_mpoleGravityConstant,
+!!                       real,              intent(in)    :: gr_mpoleFourPiInv,
+!!                       integer,           intent(in)    :: gr_mpoleGeometry,
+!!                       integer,           intent(inout) :: gr_mpoleRequest )
 !!
 !! DESCRIPTION
 !!
@@ -33,10 +41,26 @@
 !!
 !!  ipotvar        : index to variable containing the potential
 !!  Poisson_factor : the factor in front of the Poisson equation
+!!  gr_mpoleMomentR  : regular moment array (allocated externally)
+!!  gr_mpoleMomentI  : irregular moment array (allocated externally)
+!!  gr_mpoleScratch  : scratch array (allocated externally)
+!!  gr_mpoleMaxQ     : maximum number of radial bins
+!!  gr_mpoleGravityConstant : the gravitational constant (output)
+!!  gr_mpoleFourPiInv      : inverse of 4*pi (input)
+!!  gr_mpoleGeometry       : geometry handle (input)
+!!  gr_mpoleRequest        : MPI request handle (input/output)
 !!
 !!***
 
-subroutine gr_mpolePotentials (ipotvar,Poisson_factor)
+subroutine gr_mpolePotentials (ipotvar, Poisson_factor,  &
+                               gr_mpoleMomentR,          &
+                               gr_mpoleMomentI,          &
+                               gr_mpoleScratch,          &
+                               gr_mpoleMaxQ,             &
+                               gr_mpoleGravityConstant,  &
+                               gr_mpoleFourPiInv,        &
+                               gr_mpoleGeometry,         &
+                               gr_mpoleRequest)
 
   use gr_mpoleInterface, ONLY : gr_mpolePot3Dcartesian,   &
                                 gr_mpolePot2Dcylindrical, &
@@ -44,21 +68,20 @@ subroutine gr_mpolePotentials (ipotvar,Poisson_factor)
                                 gr_mpolePot3Dspherical, &
                                 gr_mpolePot1Dspherical
 
-  use gr_mpoleData,      ONLY : gr_mpoleGravityConstant, &
-                                gr_mpoleFourPiInv,       &
-                                gr_mpoleMaxQ,            &
-                                gr_mpoleMomRI,           &
-                                gr_mpoleMomentI,         &
-                                gr_mpoleMomentR,         &
-                                gr_mpoleScratch,         &
-                                gr_mpoleGeometry, gr_mpoleRequest
-
 
 #include "gr_mpole.h"
 #include "Flashx_mpi_implicitNone.fh"
 
   integer, intent (in) :: ipotvar
   real,    intent (in) :: Poisson_factor
+  real,           intent (inout) :: gr_mpoleMomentR (1:,0:)
+  real,           intent (inout) :: gr_mpoleMomentI (1:,1:)
+  real,           intent (inout) :: gr_mpoleScratch (1:,1:,1:)
+  integer, intent (in) :: gr_mpoleMaxQ
+  real,    intent (out) :: gr_mpoleGravityConstant
+  real,    intent (in)  :: gr_mpoleFourPiInv
+  integer, intent (in)  :: gr_mpoleGeometry
+  integer, intent (inout) :: gr_mpoleRequest
   integer :: stat(MPI_STATUS_SIZE),error
   
 !  

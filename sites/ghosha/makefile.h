@@ -15,7 +15,7 @@ endif
 #----------------------------------------------------------------------------
 # Set the HDF5/MPI library paths -- managed by loading with Spack 
 #----------------------------------------------------------------------------
-HDF5_PATH = /usr/local
+HDF5_PATH = /Users/adubey/homebrew/Cellar/hdf5-mpi/2.1.1
 HYPRE_PATH = 
 ZLIB_PATH  =
 PAPI_PATH  =

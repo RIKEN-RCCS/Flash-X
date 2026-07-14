@@ -60,7 +60,15 @@ subroutine Grid_finalizePoisson (iSoln,                   &
 
   use gr_mpoleData,      ONLY : gr_mpoleMomentsDump,           &
                                 gr_mpoleMultiThreading,        &
-                                gr_mpoleRadialInfoPrint
+                                gr_mpoleRadialInfoPrint,       &
+                                gr_mpoleMomentR,               &
+                                gr_mpoleMomentI,               &
+                                gr_mpoleScratch,               &
+                                gr_mpoleMaxQ,                  &
+                                gr_mpoleGravityConstant,       &
+                                gr_mpoleFourPiInv,             &
+                                gr_mpoleGeometry,              &
+                                gr_mpoleRequest
 
   implicit none
 
@@ -76,7 +84,15 @@ subroutine Grid_finalizePoisson (iSoln,                   &
 !  
   
   call Timers_start             ("gr_mpolePotentials")
-  call gr_mpolePotentials       (iSoln, poisFact)
+  call gr_mpolePotentials       (iSoln, poisFact,               &
+                                   gr_mpoleMomentR,              &
+                                   gr_mpoleMomentI,              &
+                                   gr_mpoleScratch,              &
+                                   gr_mpoleMaxQ,                 &
+                                   gr_mpoleGravityConstant,      &
+                                   gr_mpoleFourPiInv,            &
+                                   gr_mpoleGeometry,             &
+                                   gr_mpoleRequest)
   call Timers_stop              ("gr_mpolePotentials")
   
   !
