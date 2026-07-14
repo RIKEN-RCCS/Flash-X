@@ -1,8 +1,7 @@
 # dev/ — agentic docs for Flash-X
 
 A minimal, engine-independent way to embed AI-driven refactoring work in this
-repository. The methodology follows *Designing Collaborative AI-Driven Workflows
-for Scientific Software Engineering*: keep the human-authored inputs (the
+repository. The methodology follows this principle: keep the human-authored inputs (the
 capability, the plan, the spec) as files in the repo, separate from whatever
 agent runs them, so the same task is reproducible, auditable, and reusable.
 
