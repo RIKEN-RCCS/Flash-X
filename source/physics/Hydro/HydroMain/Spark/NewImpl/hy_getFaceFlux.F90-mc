@@ -1,0 +1,107 @@
+! Single-stage hydrodynamics. Mesh references and storage are backend macros.
+module newimpl_hydro
+  use, intrinsic :: ieee_arithmetic, only: ieee_is_finite
+  implicit none
+  private
+  integer, parameter :: rk=selected_real_kind(15,307)
+  integer, parameter, public :: QRHO=1, QUX=2, QUY=3, QUZ=4, QP=5, QGAMMA=6, QEINT=7
+  integer, parameter, public :: URHO=1, UMX=2, UMY=3, UMZ=4, UENER=5
+  integer, parameter, public :: HY_OK=0, HY_BAD_INPUT=1, HY_BAD_STATE=2, HY_DEGENERATE=3
+  @field_types@
+  type, public :: hydro_parameters
+    logical :: flattening=.true., hybrid=.false., shock_marker_present=.false.
+    real(rk) :: density_floor=1.e-12_rk, pressure_floor=1.e-12_rk
+    real(rk) :: tiny_state=1.e-30_rk, viscosity=0._rk
+    real(rk) :: weno_epsilon=1.e-36_rk, flattening_eta=1.e-99_rk
+  end type
+  type, public :: hydro_workspace
+    type(cell_field) :: flat, minus, plus
+    integer :: lo(3)=0, hi(3)=-1, blocks=0
+  end type
+  public :: cell_field, flux_field, hy_getFaceFlux
+contains
+  subroutine hy_getFaceFlux(data,flux,block,lo,hi,availableLo,availableHi,ndim, &
+                           inputMap,outputMap,shockVariable,params,work,maxSpeed,status,failedFace)
+    !$macro_imports
+    type(cell_field), intent(in) :: data
+    type(flux_field), intent(inout) :: flux
+    type(hydro_workspace), intent(inout) :: work
+    integer, intent(in) :: block,lo(3),hi(3),availableLo(3),availableHi(3),ndim
+    integer, intent(in) :: inputMap(7),outputMap(5),shockVariable
+    type(hydro_parameters), intent(in) :: params
+    real(rk), intent(out) :: maxSpeed
+    integer, intent(out) :: status,failedFace(4)
+    integer :: d,e(3),rlo(3),rhi(3),flo(3),fhi(3),neededLo(3),neededHi(3),i,j,k
+    real(rk) :: ql(7),qr(7),ul(5),ur(5),fl(5),fr(5),usl(5),usr(5),f(5)
+    real(rk) :: sl,sr,speed,contact,pstar
+    logical :: vacuum,inShock
+    !$macro_declarations
+    status=HY_BAD_INPUT; failedFace=0; maxSpeed=0
+    if (ndim<1 .or. ndim>3 .or. any(hi<lo)) return
+    if (block<1 .or. block>work%blocks) return
+    if (any(inputMap<1) .or. any(outputMap<1)) return
+    if (.not.all(ieee_is_finite([params%density_floor,params%pressure_floor,params%tiny_state, &
+        params%viscosity,params%weno_epsilon,params%flattening_eta]))) return
+    if (min(params%density_floor,params%pressure_floor,params%weno_epsilon,params%flattening_eta)<=0._rk) return
+    if (params%tiny_state<0._rk .or. params%viscosity<0._rk) return
+    if (params%hybrid .and. params%shock_marker_present .and. shockVariable<1) return
+    flo=lo; fhi=hi; flo(1:ndim)=lo(1:ndim)-1; fhi(1:ndim)=hi(1:ndim)+1
+    neededLo=lo; neededHi=hi
+    neededLo(1:ndim)=lo(1:ndim)-3; neededHi(1:ndim)=hi(1:ndim)+3
+    if (any(availableLo>neededLo) .or. any(availableHi<neededHi)) return
+    if (any(work%lo>flo) .or. any(work%hi<fhi)) return
+    @hy_computeFlattening(data,inputMap,block,flo,fhi,ndim,params,work%flat,status)@
+    if (status/=HY_OK) return
+    do d=1,ndim
+      e=0; e(d)=1; rlo=lo-e; rhi=hi+e
+      @hy_reconstructDirection(data,inputMap,block,rlo,rhi,e,work%flat,params,work%minus,work%plus)@
+      fhi=hi+e
+      do k=lo(3),fhi(3)
+        do j=lo(2),fhi(2)
+          do i=lo(1),fhi(1)
+            failedFace=[i,j,k,d]
+            @hy_assembleFaceStates(work%minus,work%plus,block,i,j,k,e,ql,qr)@
+            if (.not.all(ieee_is_finite(ql)) .or. .not.all(ieee_is_finite(qr))) then
+              status=HY_BAD_STATE; return
+            end if
+            @hy_repairHydroState(ql,params)@; @hy_repairHydroState(qr,params)@
+            @hy_estimateHydroWaveSpeeds(ql,qr,d,params,sl,sr,speed,vacuum,status)@
+            if (status/=HY_OK) return
+            maxSpeed=max(maxSpeed,speed)
+            f=0
+            if (.not.vacuum) then
+              @hy_primitiveToConservative(ql,ul)@; @hy_primitiveToConservative(qr,ur)@
+              @hy_hydroPhysicalFlux(ql,ul,d,fl)@; @hy_hydroPhysicalFlux(qr,ur,d,fr)@
+              inShock=.false.
+              if (params%hybrid .and. params%shock_marker_present) then
+                @hy_getFaceShock(data,shockVariable,block,i,j,k,e,inShock)@
+              end if
+              if (inShock) then
+                @hy_selectHLLEFlux(ul,ur,fl,fr,sl,sr,f,status)@
+                if (status/=HY_OK) return
+              else if (sl>=0._rk) then
+                f=fl
+              else if (sr<0._rk) then
+                f=fr
+              else
+                @hy_computeHydroContact(ql,qr,d,sl,sr,contact,pstar,status)@
+                if (status/=HY_OK) return
+                @hy_computeHydroStarState(ql,ul,d,sl,contact,pstar,usl,status)@
+                if (status/=HY_OK) return
+                @hy_computeHydroStarState(qr,ur,d,sr,contact,pstar,usr,status)@
+                if (status/=HY_OK) return
+                @hy_selectHLLCFlux(ul,ur,usl,usr,fl,fr,sl,sr,contact,f)@
+              end if
+            end if
+            @hy_addFaceViscosity(data,inputMap,block,i,j,k,e,d,params%viscosity,f)@
+            if (.not.all(ieee_is_finite(f))) then
+              status=HY_BAD_STATE; return
+            end if
+            @hy_emitFaceFlux(flux,outputMap,block,d,i,j,k,f)@
+          end do
+        end do
+      end do
+    end do
+    status=HY_OK; failedFace=0
+  end subroutine
+end module

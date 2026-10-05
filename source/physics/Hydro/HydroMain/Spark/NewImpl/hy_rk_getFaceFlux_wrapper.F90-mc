@@ -1,0 +1,144 @@
+! Host compatibility entry point. Replace the legacy implementation when linking.
+subroutine hy_rk_getFaceFlux(stage,starState,flat3d,flx,fly,flz,limits,deltas, &
+                            scr_rope,scr_flux,scr_uPlus,scr_uMinus,loGC)
+  use Hydro_data, only: hy_hybridRiemann,hy_cvisc,hy_tiny,hy_smalldens,hy_smallpres
+  use newimpl_hydro, only: QRHO,QUX,QUY,QUZ,QP,QGAMMA,QEINT, &
+                          URHO,UMX,UMY,UMZ,UENER,HY_OK,HY_BAD_STATE,HY_DEGENERATE
+  !$macro_imports
+  implicit none
+#include "Simulation.h"
+#include "constants.h"
+#include "Spark.h"
+#if NSTENCIL<3
+#error NewImpl WENO5 wrapper requires at least three guard cells
+#endif
+#if defined(SPARK_GLM) || NSPECIES+NMASS_SCALARS>0
+#error NewImpl compatibility wrapper requires hydrodynamics without species or mass scalars
+#endif
+  integer, parameter :: rk=kind(1.0)
+  integer, intent(in) :: stage,loGC(3)
+  real, intent(in) :: starState(1:,loGC(1):,loGC(2):,loGC(3):)
+  real, intent(in) :: flat3d(loGC(1):,loGC(2):,loGC(3):),deltas(MDIM)
+  integer, intent(in) :: limits(LOW:HIGH,MDIM,MAXSTAGE)
+  real, intent(out) :: flx(1:,loGC(1):,loGC(2):,loGC(3):)
+  real, intent(out) :: fly(1:,loGC(1):,loGC(2):,loGC(3):)
+  real, intent(out) :: flz(1:,loGC(1):,loGC(2):,loGC(3):)
+  real, intent(out) :: scr_rope(1:,loGC(1):,loGC(2):,loGC(3):)
+  real, intent(out) :: scr_flux(1:,loGC(1):,loGC(2):,loGC(3):)
+  real, intent(out) :: scr_uPlus(1:,loGC(1):,loGC(2):,loGC(3):)
+  real, intent(out) :: scr_uMinus(1:,loGC(1):,loGC(2):,loGC(3):)
+  type :: wrapper_parameters
+    logical :: hybrid
+    real(rk) :: density_floor,pressure_floor,tiny_state,viscosity,weno_epsilon
+  end type
+  type(wrapper_parameters) :: params
+  integer :: lo(3),hi(3),prepLo(3),prepHi(3),rlo(3),rhi(3),fhi(3),e(3)
+  integer :: inputHi(3),inputMap(7),block,i,j,k,v,d,status,shockVariable
+  real(rk) :: ql(7),qr(7),ul(5),ur(5),fl(5),fr(5),usl(5),usr(5),f(5)
+  real(rk) :: sl,sr,speed,maxSpeed,contact,pstar
+  logical :: vacuum,inShock
+  !$macro_declarations
+  ! Stage only selects the caller's requested region; input is already that stage's state.
+  if (stage<1 .or. stage>MAXSTAGE) call Driver_abort("NewImpl: invalid stage")
+  lo=limits(LOW,:,stage); hi=limits(HIGH,:,stage); block=1; maxSpeed=0
+  inputMap=[DENS_VAR,VELX_VAR,VELY_VAR,VELZ_VAR,PRES_VAR,GAMC_VAR,EINT_VAR]
+  params%hybrid=hy_hybridRiemann; params%viscosity=hy_cvisc
+  params%tiny_state=hy_tiny; params%density_floor=hy_smalldens
+  params%pressure_floor=hy_smallpres; params%weno_epsilon=1.e-36_rk
+  shockVariable=0
+#ifdef SHOK_VAR
+  shockVariable=SHOK_VAR
+#endif
+  prepLo=lo; prepHi=hi
+  prepLo(1:NDIM)=lo(1:NDIM)-NSTENCIL; prepHi(1:NDIM)=hi(1:NDIM)+NSTENCIL
+  inputHi=[ubound(starState,2),ubound(starState,3),ubound(starState,4)]
+  if (any(prepLo<loGC) .or. any(prepHi>inputHi)) &
+    call Driver_abort("NewImpl: insufficient input guard cells")
+  ! Preserve the prepared-state scratch, including rho times specific energy.
+  do k=prepLo(3),prepHi(3)
+    do j=prepLo(2),prepHi(2)
+      do i=prepLo(1),prepHi(1)
+        @hy_loadHydroCell(starState,inputMap,block,i,j,k,ql)@
+        do v=1,7
+          @cell_ref(scr_rope,v,block,i,j,k)@=ql(v)
+        end do
+      end do
+    end do
+  end do
+  do d=1,NDIM
+    e=0; e(d)=1; rlo=lo-e; rhi=hi+e; fhi=hi+e
+    @hy_reconstructDirection(starState,inputMap,block,rlo,rhi,e,flat3d,params,scr_uMinus,scr_uPlus)@
+    ! Legacy scratch contains repaired reconstructions, not merely repaired local face vectors.
+    do k=rlo(3),rhi(3)
+      do j=rlo(2),rhi(2)
+        do i=rlo(1),rhi(1)
+          do v=1,7
+            ql(v)=@cell_ref(scr_uPlus,v,block,i,j,k)@
+            qr(v)=@cell_ref(scr_uMinus,v,block,i,j,k)@
+          end do
+          @hy_repairHydroState(ql,params)@
+          @hy_repairHydroState(qr,params)@
+          do v=1,7
+            @cell_ref(scr_uPlus,v,block,i,j,k)@=ql(v)
+            @cell_ref(scr_uMinus,v,block,i,j,k)@=qr(v)
+          end do
+        end do
+      end do
+    end do
+    do k=lo(3),fhi(3)
+      do j=lo(2),fhi(2)
+        do i=lo(1),fhi(1)
+            @hy_assembleFaceStates(scr_uMinus,scr_uPlus,block,i,j,k,e,ql,qr)@
+            if (.not.all(ieee_is_finite(ql)) .or. .not.all(ieee_is_finite(qr))) then
+              call Driver_abort("NewImpl: nonfinite state or flux")
+            end if
+            @hy_repairHydroState(ql,params)@; @hy_repairHydroState(qr,params)@
+            @hy_estimateHydroWaveSpeeds(ql,qr,d,params,sl,sr,speed,vacuum,status)@
+            if (status/=HY_OK) call Driver_abort("NewImpl: invalid Riemann state")
+            maxSpeed=max(maxSpeed,speed)
+            f=0
+            if (.not.vacuum) then
+              @hy_primitiveToConservative(ql,ul)@; @hy_primitiveToConservative(qr,ur)@
+              @hy_hydroPhysicalFlux(ql,ul,d,fl)@; @hy_hydroPhysicalFlux(qr,ur,d,fr)@
+              inShock=.false.
+              if (params%hybrid .and. shockVariable>0) then
+                @hy_getFaceShock(starState,shockVariable,block,i,j,k,e,inShock)@
+              end if
+              if (inShock) then
+                @hy_selectHLLEFlux(ul,ur,fl,fr,sl,sr,f,status)@
+                if (status/=HY_OK) call Driver_abort("NewImpl: invalid Riemann state")
+              else if (sl>=0._rk) then
+                f=fl
+              else if (sr<0._rk) then
+                f=fr
+              else
+                @hy_computeHydroContact(ql,qr,d,sl,sr,contact,pstar,status)@
+                if (status/=HY_OK) call Driver_abort("NewImpl: invalid Riemann state")
+                @hy_computeHydroStarState(ql,ul,d,sl,contact,pstar,usl,status)@
+                if (status/=HY_OK) call Driver_abort("NewImpl: invalid Riemann state")
+                @hy_computeHydroStarState(qr,ur,d,sr,contact,pstar,usr,status)@
+                if (status/=HY_OK) call Driver_abort("NewImpl: invalid Riemann state")
+                @hy_selectHLLCFlux(ul,ur,usl,usr,fl,fr,sl,sr,contact,f)@
+              end if
+            end if
+            @hy_addFaceViscosity(starState,inputMap,block,i,j,k,e,d,params%viscosity,f)@
+            if (.not.all(ieee_is_finite(f))) then
+              call Driver_abort("NewImpl: nonfinite state or flux")
+            end if
+          do v=1,5
+            @cell_ref(scr_flux,v,block,i,j,k)@=f(v)
+            select case(d)
+            case(1)
+              @cell_ref(flx,v,block,i,j,k)@=f(v)
+            case(2)
+              @cell_ref(fly,v,block,i,j,k)@=f(v)
+            case(3)
+              @cell_ref(flz,v,block,i,j,k)@=f(v)
+            end select
+          end do
+        end do
+      end do
+    end do
+  end do
+  ! deltas is retained for ABI compatibility; these flux formulas contain no spacing factor.
+end subroutine
