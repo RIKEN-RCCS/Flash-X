@@ -422,3 +422,5 @@ hy_prepareAdvance driver, periodic Sod example, build commands, and end-to-end
 tests. The driver uses caller-owned scratch, explicit SSPRK tables, periodic
 exchange between stages, EOS recovery, and area/time-integrated flux buffers
 without Flash-X dependencies.
+
+The LaTeX test user guide is [TEST_USERS_GUIDE.tex](TEST_USERS_GUIDE.tex). It covers running individual and complete suites, the periodic Sod acceptance criteria, persistent builds, and troubleshooting. Typesetting instructions are included in the guide.
