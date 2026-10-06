@@ -1,0 +1,50 @@
+module newimpl_dt
+  use newimpl_hydro, only: cell_field,HY_OK,HY_BAD_INPUT,HY_BAD_STATE
+  use, intrinsic :: ieee_arithmetic, only: ieee_is_finite
+  implicit none
+  private
+  integer, parameter :: rk=selected_real_kind(15,307)
+  integer, parameter, public :: DT_CARTESIAN=1,DT_CYLINDRICAL=2,DT_SPHERICAL=3
+  public :: hy_computeDt
+contains
+  subroutine hy_computeDt(state,block,cellLo,cellHi,lineLo,lineHi,ndim,map, &
+      x,y,dx,dy,dz,uxgrid,uygrid,uzgrid,geometry,cfl,level,rank, &
+      dtCheck,dtMinLoc,maxSignalSpeed,status,failedCell)
+    !$macro_imports
+    type(cell_field), intent(in) :: state
+    integer, intent(in) :: block,cellLo(3),cellHi(3),lineLo(3),lineHi(3),ndim,map(6)
+    integer, intent(in) :: geometry,level,rank
+    real(rk), intent(in) :: x(lineLo(1):),y(lineLo(2):),dx(lineLo(1):),dy(lineLo(2):),dz(lineLo(3):)
+    real(rk), intent(in) :: uxgrid(lineLo(1):),uygrid(lineLo(2):),uzgrid(lineLo(3):),cfl
+    real(rk), intent(inout) :: dtCheck,maxSignalSpeed
+    integer, intent(inout) :: dtMinLoc(5)
+    integer, intent(out) :: status,failedCell(3)
+    integer :: i,j,k,location(5)
+    real(rk) :: sound,inverse(3),rate,speed,maxRate,maxSpeed
+    !$macro_declarations
+    status=HY_BAD_INPUT; failedCell=0
+    if (ndim<1 .or. ndim>3 .or. block<1 .or. any(cellHi<cellLo)) return
+    if (any(map<1) .or. any(lineLo>cellLo) .or. any(lineHi<cellHi)) return
+    if (geometry<DT_CARTESIAN .or. geometry>DT_SPHERICAL) return
+    if (.not.ieee_is_finite(cfl) .or. cfl<=0._rk) return
+    if (.not.all(ieee_is_finite([dtCheck,maxSignalSpeed]))) return
+    if (dtCheck<=0._rk .or. maxSignalSpeed<0._rk) return
+    maxRate=0._rk; maxSpeed=maxSignalSpeed; location=0
+    do k=cellLo(3),cellHi(3)
+      do j=cellLo(2),cellHi(2)
+        do i=cellLo(1),cellHi(1)
+          failedCell=[i,j,k]
+          @hy_acousticSpeed(state,map,block,i,j,k,0._rk,sound,status)@
+          if (status/=HY_OK) return
+          @hy_dtCellMetrics(x,y,dx,dy,dz,cellLo,i,j,k,ndim,geometry,inverse,status)@
+          if (status/=HY_OK) return
+          @hy_dtCellRate(state,map,block,i,j,k,ndim,uxgrid,uygrid,uzgrid,sound,inverse,rate,speed,status)@
+          if (status/=HY_OK) return
+          @hy_reduceDtRate(rate,speed,i,j,k,level,rank,maxRate,maxSpeed,location)@
+        end do
+      end do
+    end do
+    @hy_commitDtLimit(maxRate,cfl,location,dtCheck,dtMinLoc)@
+    maxSignalSpeed=maxSpeed; status=HY_OK; failedCell=0
+  end subroutine
+end module

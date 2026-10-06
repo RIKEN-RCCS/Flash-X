@@ -1,0 +1,137 @@
+program test_diagnostics
+  use newimpl_hydro
+  use newimpl_shock
+  use newimpl_dt
+  !$macro_imports
+  implicit none
+  integer, parameter :: rk=selected_real_kind(15,307)
+  type(cell_field) :: state,soundWork
+  integer :: lo(3),hi(3),dlo(3),dhi(3),map(6),ndim,b,i,j,k,d,status,failed(3),loc(5)
+  real(rk) :: x(0:4),y(0:4),dx(0:4),dy(0:4),dz(0:4),wx(0:4),wy(0:4),wz(0:4)
+  real(rk) :: dt,speed,expected,marker,sound,divv,grad,minP,minC
+  !$macro_declarations
+  lo=0; hi=4; map=[8,3,10,2,6,9]
+  @hy_allocateCell(state,11,lo,hi,2)@
+  @hy_allocateCell(soundWork,1,lo,hi,2)@
+  do b=1,2
+    do k=0,4
+      do j=0,4
+        do i=0,4
+          @cell_ref(state,map(1),b,i,j,k)@=1._rk
+          @cell_ref(state,map(5),b,i,j,k)@=1._rk
+          @cell_ref(state,map(6),b,i,j,k)@=1._rk
+          do d=1,3
+            @cell_ref(state,map(1+d),b,i,j,k)@=0._rk
+          end do
+          @cell_ref(state,11,b,i,j,k)@=9._rk
+        end do
+      end do
+    end do
+  end do
+  do ndim=1,3
+    dlo=lo; dhi=hi; dlo(1:ndim)=1; dhi(1:ndim)=3
+    ! Pressure gradient without compression does not mark a shock.
+    do k=0,4
+      do j=0,4
+        do i=0,4
+          @cell_ref(state,map(5),2,i,j,k)@=1._rk+i
+          @cell_ref(state,map(2),2,i,j,k)@=0._rk
+        end do
+      end do
+    end do
+    call hy_shockDetect(state,soundWork,2,lo,hi,dlo,dhi,ndim,map,11,1.e-30_rk,0.5_rk,0.1_rk,status,failed)
+    if (status/=HY_OK) stop 1
+    marker=@cell_ref(state,11,2,1,1,1)@
+    if (marker/=0._rk) stop 2
+    ! Same pressure gradient with sufficient compression.
+    do k=0,4
+      do j=0,4
+        do i=0,4
+          @cell_ref(state,map(2),2,i,j,k)@=-0.5_rk*i
+        end do
+      end do
+    end do
+    call hy_shockDetect(state,soundWork,2,lo,hi,dlo,dhi,ndim,map,11,1.e-30_rk,0.5_rk,0.1_rk,status,failed)
+    if (status/=HY_OK) stop 3
+    marker=@cell_ref(state,11,2,1,1,1)@
+    if (marker/=1._rk) stop 4
+    marker=@cell_ref(state,11,2,0,1,1)@
+    if (marker/=0._rk) stop 5
+    sound=@flat_ref(soundWork,2,1,1,1)@
+    if (abs(sound-sqrt(2._rk))>1.e-12_rk) stop 6
+  end do
+  ! The neighborhood includes diagonal neighbors, not just axis neighbors.
+  @cell_ref(state,map(5),2,1,0,0)@=0.25_rk
+  @flat_ref(soundWork,2,1,0,0)@=0.5_rk
+  @hy_shockNeighborhood(state,soundWork,map,2,1,1,1,3,minP,minC)@
+  if (minP/=0.25_rk .or. minC/=0.5_rk) stop 17
+  @cell_ref(state,map(1),2,1,1,1)@=0._rk
+  @hy_acousticSpeed(state,map,2,1,1,1,0.1_rk,sound,status)@
+  if (status/=HY_OK .or. abs(sound-sqrt(20._rk))>1.e-12_rk) stop 18
+  @cell_ref(state,map(1),2,1,1,1)@=1._rk
+  ! Both threshold comparisons are inclusive.
+  @hy_classifyShock(2._rk,3._rk,-0.3_rk,1._rk,0.5_rk,0.1_rk,marker)@
+  ! Use exactly the same product to avoid decimal-rounding disagreement at equality.
+  divv=-0.1_rk*3._rk
+  @hy_classifyShock(2._rk,3._rk,divv,1._rk,0.5_rk,0.1_rk,marker)@
+  if (marker/=1._rk) stop 7
+  call hy_shockDetect(state,soundWork,1,lo,hi,lo,hi,3,map,0,1.e-30_rk,0.5_rk,0.1_rk,status,failed)
+  if (status/=HY_OK) stop 8
+  ! Constant sound=1. Relative-grid speeds 1,3,4; maximum rate, not sum.
+  x=2._rk; y=acos(-1._rk)/2; dx=0.5_rk; dy=0.25_rk; dz=1._rk
+  wx=0._rk; wy=-2._rk; wz=-3._rk
+  ! Widths at other indices intentionally differ: Cartesian uses the low-index width.
+  dx(2:4)=9._rk; dy(2:4)=8._rk; dz(2:4)=7._rk
+  dlo=1; dhi=2
+  do ndim=1,3
+    dt=100._rk; speed=0._rk; loc=-1
+    call hy_computeDt(state,1,dlo,dhi,lo,hi,ndim,map,x,y,dx,dy,dz,wx,wy,wz,DT_CARTESIAN, &
+                      0.8_rk,5,7,dt,loc,speed,status,failed)
+    if (status/=HY_OK) stop 9
+    expected=0.4_rk
+    if (ndim>1) expected=0.8_rk/12._rk
+    if (abs(dt-expected)>1.e-12_rk) stop 10
+    if (any(loc/=[1,1,1,5,7])) stop 11
+    if (abs(speed-real(merge(1,merge(3,4,ndim==2),ndim==1),rk))>1.e-12_rk) stop 12
+    ! Incoming stronger constraint and signal speed are retained.
+    dt=1.e-5_rk; speed=99._rk; loc=-7
+    call hy_computeDt(state,1,dlo,dhi,lo,hi,ndim,map,x,y,dx,dy,dz,wx,wy,wz,DT_CARTESIAN, &
+                      0.8_rk,5,7,dt,loc,speed,status,failed)
+    if (dt/=1.e-5_rk .or. speed/=99._rk .or. any(loc/=-7)) stop 13
+  end do
+  ! Spherical y width=2*0.25 so rate=6; z=2*1 so rate=2.
+  dt=100._rk; speed=0._rk
+  call hy_computeDt(state,1,dlo,dhi,lo,hi,3,map,x,y,dx,dy,dz,wx,wy,wz,DT_SPHERICAL, &
+                    0.8_rk,5,7,dt,loc,speed,status,failed)
+  if (status/=HY_OK .or. abs(dt-0.8_rk/6._rk)>1.e-12_rk) stop 14
+  ! Cylindrical z is angular, with width r*dz; y retains its Cartesian width.
+  x=0.1_rk; dt=100._rk; speed=0._rk
+  call hy_computeDt(state,1,dlo,dhi,lo,hi,3,map,x,y,dx,dy,dz,wx,wy,wz,DT_CYLINDRICAL, &
+                    0.8_rk,5,7,dt,loc,speed,status,failed)
+  if (status/=HY_OK .or. abs(dt-0.02_rk)>1.e-12_rk) stop 19
+  x=2._rk
+  ! Zero speed/rate leaves an existing finite constraint and location unchanged.
+  do k=0,4
+    do j=0,4
+      do i=0,4
+        @cell_ref(state,map(5),1,i,j,k)@=0._rk
+      end do
+    end do
+  end do
+  wx=0; wy=0; wz=0; dt=100; speed=0; loc=-8
+  call hy_computeDt(state,1,dlo,dhi,lo,hi,3,map,x,y,dx,dy,dz,wx,wy,wz,DT_CARTESIAN, &
+                    0.8_rk,5,7,dt,loc,speed,status,failed)
+  if (status/=HY_OK .or. dt/=100._rk .or. speed/=0._rk .or. any(loc/=-8)) stop 15
+  dx(1)=0
+  call hy_computeDt(state,1,dlo,dhi,lo,hi,3,map,x,y,dx,dy,dz,wx,wy,wz,DT_CARTESIAN, &
+                    0.8_rk,5,7,dt,loc,speed,status,failed)
+  if (status/=HY_BAD_INPUT) stop 16
+  dx(1)=0.5_rk
+  @cell_ref(state,map(5),1,1,1,1)@=1._rk
+  @cell_ref(state,map(6),1,1,1,1)@=-1._rk
+  call hy_computeDt(state,1,dlo,dhi,lo,hi,3,map,x,y,dx,dy,dz,wx,wy,wz,DT_CARTESIAN, &
+                    0.8_rk,5,7,dt,loc,speed,status,failed)
+  if (status/=HY_BAD_STATE .or. any(failed/=[1,1,1])) stop 20
+  if (dt/=100._rk .or. any(loc/=-8) .or. speed/=0._rk) stop 21
+  print *, 'diagnostic tests passed' 
+end program

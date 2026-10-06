@@ -176,6 +176,61 @@ class Tests(unittest.TestCase):
                                 'hydro.f90', 'update.f90', 'test.f90', '-o', 'test'], cwd=build, check=True)
                 subprocess.run([str(build / 'test')], cwd=build, check=True)
 
+    def test_diagnostic_wrappers(self):
+        compiler = shutil.which('gfortran')
+        if not compiler:
+            self.skipTest('gfortran is needed for wrapper tests')
+        for ndim in [1,2,3]:
+            for double in [False,True]:
+                with self.subTest(ndim=ndim,double=double), tempfile.TemporaryDirectory() as tmp:
+                    build=Path(tmp)
+                    (build/'Simulation.h').write_text(
+                        f'#define NDIM {ndim}\n#define MDIM 3\n#define DENS_VAR 8\n#define VELX_VAR 3\n'
+                        '#define VELY_VAR 10\n#define VELZ_VAR 2\n#define PRES_VAR 6\n#define GAMC_VAR 9\n'
+                        '#define SHOK_VAR 11\n')
+                    (build/'constants.h').write_text('#define LOW 1\n#define HIGH 2\n#define CARTESIAN 1\n'
+                                                     '#define CYLINDRICAL 2\n#define SPHERICAL 3\n')
+                    (build/'mock.f90').write_text(
+                        'module Grid_tile\ntype Grid_tile_t\ninteger :: level\nend type\nend module\n'
+                        'module Hydro_data\nreal :: hy_tiny=1.e-30,hy_lChyp=0.,hy_cfl=0.8\n'
+                        'integer :: hy_geometry=1,hy_meshMe=7\nlogical :: hy_useHydro=.true.,'
+                        'hy_updateHydroFluxes=.true.,hy_hydroComputeDtFirstCall=.true.\nend module\n'
+                        'subroutine Driver_abort(message)\ncharacter(*) :: message\nprint *,message\n'
+                        'stop 99\nend subroutine\n')
+                    defs=[ROOT/'hydro_layout.ini',ROOT/'hydro_helpers.ini',ROOT/'diagnostic_helpers.ini']
+                    for source,target in [('hy_getFaceFlux.F90-mc','hydro.f90'),('hy_computeDt.F90-mc','dt.f90')]:
+                        m.expand_file(ROOT/source,build/target,m.MacroExpander(m.load_macros(defs)))
+                    defs.append(ROOT/'hydro_layout_flashx.ini')
+                    for source,target in [('hy_rk_shockDetect_wrapper.F90-mc','shock_wrapper.F90'),
+                                          ('Hydro_computeDt_wrapper.F90-mc','dt_wrapper.F90')]:
+                        m.expand_file(ROOT/source,build/target,m.MacroExpander(m.load_macros(defs)))
+                    flags=['-fdefault-real-8'] if double else []
+                    subprocess.run([compiler,'-cpp','-std=f2003','-fcheck=all',
+                                    '-ffpe-trap=invalid,zero,overflow',*flags,'-I',str(build),
+                                    'hydro.f90','dt.f90','mock.f90','shock_wrapper.F90','dt_wrapper.F90',
+                                    str(ROOT/'test_diagnostic_wrappers.F90'),'-o','test'],cwd=build,check=True)
+                    subprocess.run([str(build/'test')],cwd=build,check=True)
+
+    def test_diagnostics(self):
+        compiler = shutil.which('gfortran')
+        if not compiler:
+            self.skipTest('gfortran is needed for diagnostics')
+        for layout in [None, 'hydro_layout_spatial_first.ini', 'hydro_layout_records.ini']:
+            with self.subTest(layout=layout), tempfile.TemporaryDirectory() as tmp:
+                build = Path(tmp)
+                defs = [ROOT / 'hydro_layout.ini', ROOT / 'hydro_helpers.ini', ROOT / 'diagnostic_helpers.ini']
+                if layout:
+                    defs.append(ROOT / layout)
+                exp = m.MacroExpander(m.load_macros(defs))
+                for source,target in [('hy_getFaceFlux.F90-mc','hydro.f90'),
+                                      ('hy_shockDetect.F90-mc','shock.f90'),
+                                      ('hy_computeDt.F90-mc','dt.f90'),
+                                      ('test_diagnostics.F90-mc','test.f90')]:
+                    m.expand_file(ROOT / source, build / target, exp)
+                subprocess.run([compiler, '-std=f2003', '-fcheck=all', '-ffpe-trap=invalid,zero,overflow',
+                                'hydro.f90','shock.f90','dt.f90','test.f90','-o','test'],cwd=build,check=True)
+                subprocess.run([str(build / 'test')],cwd=build,check=True)
+
     def test_hydro(self):
         compiler = shutil.which('gfortran')
         if not compiler:

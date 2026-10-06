@@ -326,3 +326,99 @@ checks use the actual Spark.h with mocked build configuration in 1D/2D/3D,
 default-real telescoping and promoted-double non-telescoping variants. All checks
 compile with Fortran 2003, bounds checking, and floating-point traps. Full Flash-X
 setup integration and the Spark suite remain separate validation steps.
+
+## Shock detection and timestep calculation
+
+`hy_shockDetect.F90-mc` and `hy_computeDt.F90-mc` provide `newimpl_shock` and
+`newimpl_dt`. Each module has one top-level subroutine; computational helpers
+are in `diagnostic_helpers.ini` and share the existing expander. Inputs and
+configuration are explicit, with no mutable module globals in the cores.
+The same three storage backends are supported. `line_ref` covers the supplied
+one-dimensional coordinates, cell widths, and grid velocities.
+
+The arithmetic follows `docs/designDocs/shock_detect_equations.pdf` and
+`hydro_compute_dt_equations.pdf`, cross-checked against the active source files.
+The shock PDF describes `Hydro_funcs.F90/shockDetect`, whose detection region is
+explicit. The active `hy_rk_shockDetect` instead trims one cell from each active
+axis of blkLimitsGC. The new core therefore accepts a sound/reset region
+`cellLo:cellHi` and an independent detection region `detectLo:detectHi`.
+The latter must allow one-cell neighbors within the former on each active axis.
+To reproduce the PDF's full-array reset, pass the full allocated domain as the
+sound/reset region. To reproduce the active entry point, use its guard limits
+and the trimmed detection region, as the wrapper does.
+
+Both cores use `map(6)` = density, ux, uy, uz, pressure, gammaC. Shock detection
+writes the separately supplied shock-variable identifier and caller-owned sound
+scratch through `flat_ref`; no mesh scratch allocation is performed. Nonpositive
+shockVariable is a successful no-op. The sound denominator is max(rho,densityGuard),
+with beta=0.5 and delta=0.1 supplied by the compatibility wrapper. Neighborhood
+minima include diagonal cells (3/9/27 members). Velocity/pressure differences are
+undivided, independent of spacing and geometry; both threshold comparisons are
+inclusive. All marker values in the sound/reset region are cleared before
+classification. Scratch and marker entries outside that region are untouched in
+the core. Errors can leave a partially computed scratch/marker region.
+
+The timestep core uses **no density floor**, includes velocities relative to the
+supplied grid velocities, and takes the maximum directional rate rather than a
+sum. Cartesian widths come from the lower interior index, matching the source
+rather than introducing a per-cell Cartesian spacing formula. Cylindrical 3D
+uses r*dz for the angular z width; spherical active angular directions use r*dy
+and r*sin(theta)*dz. Unused angular directions are not evaluated. The direction
+constants are DT_CARTESIAN, DT_CYLINDRICAL, DT_SPHERICAL. All active widths must be
+positive; supplied arrays and maps must cover their requested indices.
+
+`dtCheck`, `dtMinLoc(5)`, and `maxSignalSpeed` are caller-owned accumulators.
+For positive CFL, the first positive maximum rate in i-fastest/j/k traversal
+wins. A candidate replaces dtCheck/location only when strictly smaller, while
+maxSignalSpeed accumulates across calls regardless of whether dtCheck changes.
+Location is [i,j,k,level,rank], with level and rank explicit. Zero rate yields
+huge(kind-real) and no limiting location. dt and signal-speed outputs are committed
+only after a successful scan. Positive finite CFL and incoming dtCheck, finite
+nonnegative incoming maximum speed, valid geometry, and valid acoustic states are
+required. Invalid input returns status and failedCell instead of unchecked
+square roots/divisions. This targets admissible-input arithmetic, not the source's
+unguarded invalid-input behavior. CFL-weighted rate comparisons are simplified
+to rate comparisons under the positive-CFL requirement.
+
+Compatibility adapters are `hy_rk_shockDetect_wrapper.F90-mc` and
+`Hydro_computeDt_wrapper.F90-mc`. They preserve the existing argument lists and
+import legacy mutable configuration only at the adapter boundary. The shock
+adapter uses caller-supplied Vc, zeros its whole array as the active routine does,
+and preserves markers outside blkLimitsGC. Without SHOK_VAR it returns immediately.
+The timestep adapter preserves explicit-shape coordinate-array arguments and the
+pointer U argument; it retains the hydro-enabled early return, first-call flag,
+hy_lChyp accumulation, level/rank, and unchanged optional extraInfo. Other legacy
+geometry values use Cartesian factors, exactly as the source's default branch.
+SPARK_GLM is rejected by the timestep adapter; magnetic waves remain outside this
+hydrodynamic implementation. These are serial host adapters, not offload variants.
+
+From this directory:
+
+```sh
+python3 macro_expand.py --definitions hydro_layout.ini diagnostic_helpers.ini \
+  --input hy_shockDetect.F90-mc --output build/hy_shockDetect.F90
+python3 macro_expand.py --definitions hydro_layout.ini diagnostic_helpers.ini \
+  --input hy_computeDt.F90-mc --output build/hy_computeDt.F90
+python3 macro_expand.py --definitions hydro_layout.ini diagnostic_helpers.ini hydro_layout_flashx.ini \
+  --input hy_rk_shockDetect_wrapper.F90-mc --output build/hy_rk_shockDetect.F90
+python3 macro_expand.py --definitions hydro_layout.ini diagnostic_helpers.ini hydro_layout_flashx.ini \
+  --input Hydro_computeDt_wrapper.F90-mc --output build/Hydro_computeDt.F90
+```
+
+Compile newimpl_hydro first and newimpl_dt before the timestep adapter. Link each
+adapter instead of the corresponding old symbol, with the build's normal headers
+and modules. The tests cover all three layouts, reduced dimensions, pressure and
+compression switches, threshold equality, diagonal minima, guarded sound speed,
+Cartesian/cylindrical/spherical rates, grid motion, tie ordering, incoming
+constraints, zero rate, and invalid states. Adapter checks run 1D/2D/3D in both
+default and promoted-double precision with mocked Flash-X configuration. All use
+Fortran 2003, bounds checks, and floating-point traps. Full Spark-suite validation
+and build-system integration have not been performed.
+
+## Combined standalone preparation and advance
+
+See [STANDALONE.md](STANDALONE.md) for the Grid-provider callback contract,
+hy_prepareAdvance driver, periodic Sod example, build commands, and end-to-end
+tests. The driver uses caller-owned scratch, explicit SSPRK tables, periodic
+exchange between stages, EOS recovery, and area/time-integrated flux buffers
+without Flash-X dependencies.

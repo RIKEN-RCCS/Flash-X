@@ -1,0 +1,183 @@
+program periodic_shock_tube
+  use newimpl_hydro
+  use newimpl_driver
+  use hydro_grid_contract
+  use periodic_grid_example
+  ! The expander inserts any imports required by the selected storage macros here.
+  !$macro_imports
+  implicit none
+  integer, parameter :: rk=hydro_kind
+  ! The Grid provider owns mesh metadata; this program owns all solution and scratch storage.
+  type(periodic_grid_t) :: grid
+  type(hydro_block_t), allocatable :: blocks(:)
+  type(cell_field) :: state,referenceState,stageState,soundWork
+  type(flux_field) :: flux,integratedFlux
+  type(hydro_workspace) :: work
+  type(hydro_parameters) :: params
+  integer :: nCells,nBlocks,nVars,nFlux,status,b,i,v,step,failedBlock,failedCell(3),dtLoc(5),ios,globalCell,unit
+  integer :: inputMap(7),updateMap(6),fluxMap(5),shockVariable,lo(3),hi(3),scheme,nStages
+  real(rk) :: finalTime,time,dt,speed,x,rho,p,eint,velocity,totalEnergy
+  real(rk) :: coefficients(3,3),weights(3),mass0,momentum0,energy0,mass,momentum,energy,volume
+  real(rk) :: stepBalance(5),fluxLeft(5),fluxRight(5),balanceError
+  character(256) :: arg,outputPath
+  ! Macro-local declarations are hoisted here for compatibility without Fortran BLOCK.
+  !$macro_declarations
+  ! Read optional cell count, block count, end time, CSV path, and SSPRK order.
+  ! Defaults give a small 1D test with several blocks, exercising periodic guard exchange.
+  nCells=256; nBlocks=4; finalTime=0.05_rk; outputPath='periodic_shock_tube.csv'; scheme=2
+  call get_command_argument(1,arg)
+  if (len_trim(arg)>0) then
+    read(arg,*,iostat=ios) nCells
+    if (ios/=0) stop 1
+  end if
+  call get_command_argument(2,arg)
+  if (len_trim(arg)>0) then
+    read(arg,*,iostat=ios) nBlocks
+    if (ios/=0) stop 1
+  end if
+  call get_command_argument(3,arg)
+  if (len_trim(arg)>0) then
+    read(arg,*,iostat=ios) finalTime
+    if (ios/=0) stop 1
+  end if
+  call get_command_argument(4,arg)
+  if (len_trim(arg)>0) outputPath=arg
+  call get_command_argument(5,arg)
+  if (len_trim(arg)>0) then
+    read(arg,*,iostat=ios) scheme
+    if (ios/=0) stop 1
+  end if
+  if (finalTime<=0._rk .or. scheme<2 .or. scheme>3) stop 1
+  ! Ask the example mesh for equal-sized blocks, guard bounds, spacing, areas, and volumes.
+  ! Its validation requires the global cell count to be divisible by the block count.
+  call periodic_describe(grid,nCells,nBlocks,blocks,status)
+  if (status/=HY_OK) stop 2
+  ! Field identifiers are independent of storage layout. Input fields are
+  ! rho, ux, uy, uz, pressure, gamma, and specific internal energy (fields 1--7).
+  ! Updates also need separate specific total energy (8); shock detection uses marker 9.
+  ! Flux components carry mass, three momenta, and total energy.
+  nVars=9; nFlux=5
+  inputMap=[1,2,3,4,5,6,7]; updateMap=[1,2,3,4,8,7]; fluxMap=[1,2,3,4,5]; shockVariable=9
+  ! Equal-sized blocks share allocation bounds in this example. Include guard cells;
+  ! the mesh fills them from periodic donors before the kernels read them.
+  ! referenceState preserves the timestep start; stageState holds successive RK stages.
+  ! soundWork and work are reusable acoustic/reconstruction/Riemann scratch.
+  ! flux holds instantaneous flux densities; integratedFlux holds RK-weighted area-time transfers.
+  ! Allocation macros allow the same driver to use any supported storage layout.
+  lo=blocks(1)%guardLo; hi=blocks(1)%guardHi
+  @hy_allocateCell(state,nVars,lo,hi,nBlocks)@
+  @hy_allocateCell(referenceState,nVars,lo,hi,nBlocks)@
+  @hy_allocateCell(stageState,nVars,lo,hi,nBlocks)@
+  @hy_allocateCell(soundWork,1,lo,hi,nBlocks)@
+  @hy_allocateFlux(flux,nFlux,lo,hi,1,nBlocks)@
+  @hy_allocateFlux(integratedFlux,nFlux,lo,hi,1,nBlocks)@
+  @hy_allocateWorkspace(work,lo,hi,nBlocks)@
+  ! Initialize owned cells only, using global cell centers so block decomposition
+  ! cannot change the initial discontinuity at x=0.5. Periodicity also introduces
+  ! a reversed discontinuity at x=0, so this test has two evolving wave systems.
+  ! Accumulate initial conserved totals over interiors, excluding duplicated guards.
+  mass0=0; momentum0=0; energy0=0
+  do b=1,nBlocks
+    volume=blocks(b)%volume
+    do i=1,grid%cellsPerBlock
+      globalCell=(b-1)*grid%cellsPerBlock+i
+      x=(globalCell-0.5_rk)*blocks(b)%spacing(1)
+      rho=0.125_rk; p=0.1_rk
+      if (x<0.5_rk*grid%length) then
+        rho=1._rk; p=1._rk
+      end if
+      ! Ideal-gas pressure determines specific internal energy. All velocities are zero,
+      ! so specific total energy initially equals specific internal energy.
+      eint=p/((grid%gamma-1._rk)*rho)
+      @cell_ref(state,1,b,i,1,1)@=rho
+      @cell_ref(state,2,b,i,1,1)@=0._rk
+      @cell_ref(state,3,b,i,1,1)@=0._rk
+      @cell_ref(state,4,b,i,1,1)@=0._rk
+      @cell_ref(state,5,b,i,1,1)@=p
+      @cell_ref(state,6,b,i,1,1)@=grid%gamma
+      @cell_ref(state,7,b,i,1,1)@=eint
+      @cell_ref(state,8,b,i,1,1)@=eint
+      @cell_ref(state,9,b,i,1,1)@=0._rk
+      mass0=mass0+volume*rho; energy0=energy0+volume*rho*eint
+    end do
+  end do
+  ! Each column defines U_new = a*U_start + b*U_stage + c*dt*L(U_stage).
+  ! SSPRK2 uses two stages; SSPRK3 replaces stage two and adds a third stage.
+  ! Separate weights combine stage fluxes into the net conservative transfer over dt.
+  coefficients=0; weights=0; nStages=scheme
+  coefficients(:,1)=[1._rk,0._rk,1._rk]
+  coefficients(:,2)=[0.5_rk,0.5_rk,0.5_rk]; weights(1:2)=0.5_rk
+  if (scheme==3) then
+    coefficients(:,2)=[0.75_rk,0.25_rk,0.25_rk]
+    coefficients(:,3)=[1._rk/3,2._rk/3,2._rk/3]
+    weights=[1._rk/6,1._rk/6,2._rk/3]
+  end if
+  ! Enable the hybrid Riemann choice driven by shock markers and add artificial viscosity.
+  params%hybrid=.true.; params%shock_marker_present=.true.; params%viscosity=0.1_rk
+  ! Advance one complete timestep per call. The driver prepares EOS/guards/markers,
+  ! chooses the CFL-limited dt, and performs all RK stages before committing state.
+  ! Pass the remaining time as a cap so the final step reaches the requested end time.
+  ! Mesh/EOS callbacks and all scratch are explicit arguments; there is no hidden Grid state.
+  time=0; step=0; balanceError=0
+  do while (time<finalTime)
+    call hy_prepareAdvance(grid,blocks,1,nVars,state,referenceState,stageState,soundWork,flux,integratedFlux, &
+        work,inputMap,updateMap,fluxMap,shockVariable,params,1.e-12_rk,0.4_rk, &
+        coefficients(:,1:nStages),weights(1:nStages),finalTime-time,dt,speed, &
+        periodic_fillGuards,periodic_synchronizeFlux,serial_reduceLimits,idealGas_eos, &
+        status,failedBlock,failedCell,dtLoc)
+    ! A failed call may leave partial scratch or diagnostics; stop rather than use it
+    ! as an accepted timestep. Report the block and cell supplied by the driver.
+    if (status/=HY_OK) then
+      print *, 'advance failure',status,failedBlock,failedCell
+      stop 3
+    end if
+    ! On a periodic domain, every outward transfer must be another block's inward
+    ! transfer. Summing right-minus-left integrated fluxes should therefore vanish,
+    ! including the shared face connecting the last block back to the first.
+    stepBalance=0
+    do b=1,nBlocks
+      do v=1,5
+        fluxLeft(v)=@face_ref(integratedFlux,v,b,1,1,1,1)@
+        fluxRight(v)=@face_ref(integratedFlux,v,b,1,grid%cellsPerBlock+1,1,1)@
+      end do
+      stepBalance=stepBalance+fluxRight-fluxLeft
+    end do
+    balanceError=max(balanceError,maxval(abs(stepBalance)))
+    ! Reject a timestep too small to advance floating-point time, and bound the
+    ! iteration count to catch a stalled run instead of looping indefinitely.
+    if (time+dt<=time) stop 4
+    time=time+dt; step=step+1
+    if (step>100000) stop 5
+  end do
+  ! Write the final owned-cell profile in global spatial order for plotting.
+  ! Recompute conserved totals using volume*rho, volume*rho*u, and volume*rho*E;
+  ! the stored energy fields themselves are specific energies, not energy densities.
+  mass=0; momentum=0; energy=0
+  unit=20
+  open(unit=unit,file=trim(outputPath),status='replace',action='write',iostat=ios)
+  if (ios/=0) stop 6
+  write(unit,'(A)') 'x,density,velocity,pressure,internal_energy,total_energy'
+  do b=1,nBlocks
+    volume=blocks(b)%volume
+    do i=1,grid%cellsPerBlock
+      globalCell=(b-1)*grid%cellsPerBlock+i
+      x=(globalCell-0.5_rk)*blocks(b)%spacing(1)
+      rho=@cell_ref(state,1,b,i,1,1)@
+      velocity=@cell_ref(state,2,b,i,1,1)@
+      p=@cell_ref(state,5,b,i,1,1)@
+      eint=@cell_ref(state,7,b,i,1,1)@
+      totalEnergy=@cell_ref(state,8,b,i,1,1)@
+      mass=mass+rho*volume; momentum=momentum+rho*velocity*volume; energy=energy+rho*totalEnergy*volume
+      write(unit,'(ES24.16,5(",",ES24.16))') x,rho,velocity,p,eint,totalEnergy
+    end do
+  end do
+  close(unit)
+  ! Report both solution conservation and face-transfer consistency. Periodicity
+  ! supplies no net boundary source, so totals should match their initial values
+  ! to roundoff for this test (the energy floors should remain inactive).
+  print *, 'steps,time:',step,time
+  print *, 'mass,momentum,energy errors:',mass-mass0,momentum-momentum0,energy-energy0
+  print *, 'integrated boundary imbalance:',balanceError
+  if (maxval(abs([mass-mass0,momentum-momentum0,energy-energy0]))>1.e-9_rk) stop 7
+  if (balanceError>1.e-12_rk) stop 8
+end program
