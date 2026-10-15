@@ -31,7 +31,6 @@
 !! @param loGC            Lower indices including guard cells
 !<
 
-!!REORDER(4): solnData
 !!VARIANTS(GPU): hy_rk_renormAbundance, Driver_abort
 
 #include "constants.h"
@@ -49,7 +48,7 @@ subroutine hy_rk_renormAbundance(tileLimits, solnData, loGC)
 
    integer, intent(IN) :: loGC(3)
    integer, intent(IN) :: tileLimits(LOW:HIGH,MDIM)
-   real, dimension(1:, loGC(1):, loGC(2):, loGC(3):), intent(IN OUT) :: solnData
+   real, @M dim4gc, intent(IN OUT) :: solnData
 
    integer :: i, j, k, n
 
@@ -73,10 +72,10 @@ subroutine hy_rk_renormAbundance(tileLimits, solnData, loGC)
             !compute the sum of the abundances
 
             do n = SPECIES_BEGIN,SPECIES_END
-               solnData(n,i,j,k) = &
+               solnData(@M blk(n,i,j,k)) = &
                   max(hy_smallX, &
-                  min(1.e0,solnData(n,i,j,k)))
-               abundSum = abundSum + solnData(n,i,j,k)
+                  min(1.e0,solnData(@M blk(n,i,j,k))))
+               abundSum = abundSum + solnData(@M blk(n,i,j,k))
             enddo
 
             ! if the conservation is really messed up, give an error
@@ -92,9 +91,9 @@ subroutine hy_rk_renormAbundance(tileLimits, solnData, loGC)
             suminv = 1.e0 / abundSum
 
             do n = SPECIES_BEGIN, SPECIES_END
-               solnData(n,i,j,k) =  &
+               solnData(@M blk(n,i,j,k)) =  &
                   max(hy_smallX, min(1.e0,suminv*&
-                  solnData(n,i,j,k)))
+                  solnData(@M blk(n,i,j,k))))
             enddo
 
          enddo

@@ -39,8 +39,6 @@
 !<
 
 !!VARIANTS(GPU): hy_rk_getFaceFlux
-!!Reorder(4):starState,fl[xyz]
-!!Reorder(4):scr_rope,scr_flux,scr_uPlus,scr_uMinus
 
 subroutine hy_rk_getFaceFlux (stage, starState, flat3d, flx, fly, flz, &
                               limits, deltas, &
@@ -67,9 +65,9 @@ subroutine hy_rk_getFaceFlux (stage, starState, flat3d, flx, fly, flz, &
 #include "Spark.h"
 
   integer, intent(IN) :: stage, loGC(3)
-  real, dimension(1:, loGC(1):, loGC(2):, loGC(3):), intent(IN) :: starState
-  real, dimension(1:, loGC(1):, loGC(2):, loGC(3):), intent(OUT) :: flx, fly, flz
-  real, dimension(1:, loGC(1):, loGC(2):, loGC(3):), intent(OUT) :: scr_rope, scr_flux, scr_uPlus, scr_uMinus
+  real, @M dim4gc, intent(IN) :: starState
+  real, @M dim4gc, intent(OUT) :: flx, fly, flz
+  real, @M dim4gc, intent(OUT) :: scr_rope, scr_flux, scr_uPlus, scr_uMinus
   real, dimension(loGC(1):, loGC(2):, loGC(3):), intent(IN) :: flat3d
   integer, dimension(LOW:HIGH, MDIM, MAXSTAGE), intent(IN) :: limits
   real, dimension(MDIM), intent(IN)  :: deltas
@@ -96,22 +94,22 @@ subroutine hy_rk_getFaceFlux (stage, starState, flat3d, flx, fly, flz, &
   do k = limits(LOW,KAXIS,stage)-NSTENCIL*K3D, limits(HIGH,KAXIS,stage)+NSTENCIL*K3D
   do j = limits(LOW,JAXIS,stage)-NSTENCIL*K2D, limits(HIGH,JAXIS,stage)+NSTENCIL*K2D
   do i = limits(LOW,IAXIS,stage)-NSTENCIL, limits(HIGH,IAXIS,stage)+NSTENCIL
-     scr_rope(HY_DENS,i,j,k) = starState(DENS_VAR,i,j,k)
-     scr_rope(HY_VELX,i,j,k) = starState(VELX_VAR,i,j,k)
-     scr_rope(HY_VELY,i,j,k) = starState(VELY_VAR,i,j,k)
-     scr_rope(HY_VELZ,i,j,k) = starState(VELZ_VAR,i,j,k)
-     scr_rope(HY_PRES,i,j,k) = starState(PRES_VAR,i,j,k)
-     scr_rope(HY_GAMC,i,j,k) = starState(GAMC_VAR,i,j,k)
-     scr_rope(HY_RHOE,i,j,k) = starState(DENS_VAR,i,j,k)*starState(EINT_VAR,i,j,k)
+     scr_rope(@M blk(HY_DENS,i,j,k)) = starState(@M blk(DENS_VAR,i,j,k))
+     scr_rope(@M blk(HY_VELX,i,j,k)) = starState(@M blk(VELX_VAR,i,j,k))
+     scr_rope(@M blk(HY_VELY,i,j,k)) = starState(@M blk(VELY_VAR,i,j,k))
+     scr_rope(@M blk(HY_VELZ,i,j,k)) = starState(@M blk(VELZ_VAR,i,j,k))
+     scr_rope(@M blk(HY_PRES,i,j,k)) = starState(@M blk(PRES_VAR,i,j,k))
+     scr_rope(@M blk(HY_GAMC,i,j,k)) = starState(@M blk(GAMC_VAR,i,j,k))
+     scr_rope(@M blk(HY_RHOE,i,j,k)) = starState(@M blk(DENS_VAR,i,j,k))*starState(@M blk(EINT_VAR,i,j,k))
 #ifdef SPARK_GLM
-     scr_rope(HY_MAGX,i,j,k) = starState(MAGX_VAR,i,j,k)
-     scr_rope(HY_MAGY,i,j,k) = starState(MAGY_VAR,i,j,k)
-     scr_rope(HY_MAGZ,i,j,k) = starState(MAGZ_VAR,i,j,k)
-     scr_rope(HY_PSIB,i,j,k) = starState(PSIB_VAR,i,j,k)
+     scr_rope(@M blk(HY_MAGX,i,j,k)) = starState(@M blk(MAGX_VAR,i,j,k))
+     scr_rope(@M blk(HY_MAGY,i,j,k)) = starState(@M blk(MAGY_VAR,i,j,k))
+     scr_rope(@M blk(HY_MAGZ,i,j,k)) = starState(@M blk(MAGZ_VAR,i,j,k))
+     scr_rope(@M blk(HY_PSIB,i,j,k)) = starState(@M blk(PSIB_VAR,i,j,k))
 #endif
 #if NSPECIES+NMASS_SCALARS>0
      do n=SPECIES_BEGIN, MASS_SCALARS_END
-        scr_rope(HY_NUM_VARS+1+n-SPECIES_BEGIN,i,j,k) = starState(n,i,j,k)
+        scr_rope(@M blk(HY_NUM_VARS+1+n-SPECIES_BEGIN,i,j,k)) = starState(@M blk(n,i,j,k))
      enddo
 #endif
   enddo
@@ -174,14 +172,14 @@ subroutine hy_rk_getFaceFlux (stage, starState, flat3d, flx, fly, flz, &
      do k = limits(LOW,KAXIS,stage), limits(HIGH,KAXIS,stage)+1*ks
      do j = limits(LOW,JAXIS,stage), limits(HIGH,JAXIS,stage)+1*js
      do i = limits(LOW,IAXIS,stage), limits(HIGH,IAXIS,stage)+1*is
-        VL = scr_uPlus(1:HY_NUM_VARS,i-is,j-js,k-ks)
-        VR = scr_uMinus(1:HY_NUM_VARS,i,j,k)
+        VL = scr_uPlus(@M blkrangeoff(1,HY_NUM_VARS,i,-1,is,j,-1,js,k,-1,ks))
+        VR = scr_uMinus(@M blkrange(1,HY_NUM_VARS,i,j,k))
         inShock = .false.
 #ifdef SHOK_VAR
-        inShock = any(starState(SHOK_VAR,i-1*is:i,j-1*js:j,k-1*ks:k) /= 0.0)
+        inShock = any(starState(@M blkstencil(SHOK_VAR,i,j,k,is,js,ks)) /= 0.0)
 #endif
         @M hy_riemann
-        scr_flux(1:HY_NUM_FLUX,i,j,k) = Fstar(1:HY_NUM_FLUX)
+        scr_flux(@M blkrange(1,HY_NUM_FLUX,i,j,k)) = Fstar(1:HY_NUM_FLUX)
      enddo
      enddo
      enddo
@@ -197,37 +195,37 @@ subroutine hy_rk_getFaceFlux (stage, starState, flat3d, flx, fly, flz, &
      do j = limits(LOW,JAXIS,stage), limits(HIGH,JAXIS,stage)+1*js
      do i = limits(LOW,IAXIS,stage), limits(HIGH,IAXIS,stage)+1*is
         ! Add artificial viscosity for strong-shock capturing
-        avisc = hy_cvisc*max(-(scr_rope(HY_VELX+dir-1,i,j,k) &
-                            - scr_rope(HY_VELX+dir-1,i-1*is,j-1*js,k-1*ks)),0.)
+        avisc = hy_cvisc*max(-(scr_rope(@M blk(HY_VELX+dir-1,i,j,k)) &
+                            - scr_rope(@M blkstride(HY_VELX+dir-1,i,-1,is,j,-1,js,k,-1,ks))),0.)
         ! Construct minus and plus TOTAL energy densities
-        VenerLo = scr_rope(HY_DENS,i-1*is,j-1*js,k-1*ks) &
-                  *0.5*(dot_product(scr_rope(HY_VELX:HY_VELZ,i-1*is,j-1*js,k-1*ks), &
-                                    scr_rope(HY_VELX:HY_VELZ,i-1*is,j-1*js,k-1*ks)))&
-                  + scr_rope(HY_RHOE,i-1*is,j-1*js,k-1*ks)
-        VenerHi = scr_rope(HY_DENS,i,j,k) &
-                  *0.5*(dot_product(scr_rope(HY_VELX:HY_VELZ,i,j,k), &
-                                    scr_rope(HY_VELX:HY_VELZ,i,j,k)))&
-                  + scr_rope(HY_RHOE,i,j,k)
+        VenerLo = scr_rope(@M blkstride(HY_DENS,i,-1,is,j,-1,js,k,-1,ks)) &
+                  *0.5*(dot_product(scr_rope(@M blkrangeoff(HY_VELX,HY_VELZ,i,-1,is,j,-1,js,k,-1,ks)), &
+                                    scr_rope(@M blkrangeoff(HY_VELX,HY_VELZ,i,-1,is,j,-1,js,k,-1,ks))))&
+                  + scr_rope(@M blkstride(HY_RHOE,i,-1,is,j,-1,js,k,-1,ks))
+        VenerHi = scr_rope(@M blk(HY_DENS,i,j,k)) &
+                  *0.5*(dot_product(scr_rope(@M blkrange(HY_VELX,HY_VELZ,i,j,k)), &
+                                    scr_rope(@M blkrange(HY_VELX,HY_VELZ,i,j,k))))&
+                  + scr_rope(@M blk(HY_RHOE,i,j,k))
 
-        scr_flux(HY_MASS:HY_ENER,i,j,k) = &
-           scr_flux(HY_MASS:HY_ENER,i,j,k) &
-              + avisc*(/ scr_rope(HY_DENS,i-1*is,j-1*js,k-1*ks) - scr_rope(HY_DENS,i,j,k), &
-                         scr_rope(HY_DENS,i-1*is,j-1*js,k-1*ks)*scr_rope(HY_VELX,i-1*is,j-1*js,k-1*ks) &
-                              - scr_rope(HY_DENS,i,j,k)*scr_rope(HY_VELX,i,j,k), &
-                         scr_rope(HY_DENS,i-1*is,j-1*js,k-1*ks)*scr_rope(HY_VELY,i-1*is,j-1*js,k-1*ks) &
-                              - scr_rope(HY_DENS,i,j,k)*scr_rope(HY_VELY,i,j,k), &
-                         scr_rope(HY_DENS,i-1*is,j-1*js,k-1*ks)*scr_rope(HY_VELZ,i-1*is,j-1*js,k-1*ks) &
-                              - scr_rope(HY_DENS,i,j,k)*scr_rope(HY_VELZ,i,j,k), &
+        scr_flux(@M blkrange(HY_MASS,HY_ENER,i,j,k)) = &
+           scr_flux(@M blkrange(HY_MASS,HY_ENER,i,j,k)) &
+              + avisc*(/ scr_rope(@M blkstride(HY_DENS,i,-1,is,j,-1,js,k,-1,ks)) - scr_rope(@M blk(HY_DENS,i,j,k)), &
+                         scr_rope(@M blkstride(HY_DENS,i,-1,is,j,-1,js,k,-1,ks))*scr_rope(@M blkstride(HY_VELX,i,-1,is,j,-1,js,k,-1,ks)) &
+                              - scr_rope(@M blk(HY_DENS,i,j,k))*scr_rope(@M blk(HY_VELX,i,j,k)), &
+                         scr_rope(@M blkstride(HY_DENS,i,-1,is,j,-1,js,k,-1,ks))*scr_rope(@M blkstride(HY_VELY,i,-1,is,j,-1,js,k,-1,ks)) &
+                              - scr_rope(@M blk(HY_DENS,i,j,k))*scr_rope(@M blk(HY_VELY,i,j,k)), &
+                         scr_rope(@M blkstride(HY_DENS,i,-1,is,j,-1,js,k,-1,ks))*scr_rope(@M blkstride(HY_VELZ,i,-1,is,j,-1,js,k,-1,ks)) &
+                              - scr_rope(@M blk(HY_DENS,i,j,k))*scr_rope(@M blk(HY_VELZ,i,j,k)), &
                           VenerLo - VenerHi &
                        /)
 
 #ifdef SPARK_GLM
-        scr_flux(HY_FMGX:HY_FPSI,i,j,k) = &
-              scr_flux(HY_FMGX:HY_FPSI,i,j,k) &
-                 + avisc*(/ scr_rope(HY_MAGX,i-1*is,j-1*js,k-1*ks) - scr_rope(HY_MAGX,i,j,k), &
-                            scr_rope(HY_MAGY,i-1*is,j-1*js,k-1*ks) - scr_rope(HY_MAGY,i,j,k), &
-                            scr_rope(HY_MAGZ,i-1*is,j-1*js,k-1*ks) - scr_rope(HY_MAGZ,i,j,k), &
-                            scr_rope(HY_PSIB,i-1*is,j-1*js,k-1*ks) - scr_rope(HY_PSIB,i,j,k) &
+        scr_flux(@M blkrange(HY_FMGX,HY_FPSI,i,j,k)) = &
+              scr_flux(@M blkrange(HY_FMGX,HY_FPSI,i,j,k)) &
+                 + avisc*(/ scr_rope(@M blkstride(HY_MAGX,i,-1,is,j,-1,js,k,-1,ks)) - scr_rope(@M blk(HY_MAGX,i,j,k)), &
+                            scr_rope(@M blkstride(HY_MAGY,i,-1,is,j,-1,js,k,-1,ks)) - scr_rope(@M blk(HY_MAGY,i,j,k)), &
+                            scr_rope(@M blkstride(HY_MAGZ,i,-1,is,j,-1,js,k,-1,ks)) - scr_rope(@M blk(HY_MAGZ,i,j,k)), &
+                            scr_rope(@M blkstride(HY_PSIB,i,-1,is,j,-1,js,k,-1,ks)) - scr_rope(@M blk(HY_PSIB,i,j,k)) &
                          /)
 #endif
               ! Here, we compute the species and mass scalar
@@ -235,12 +233,12 @@ subroutine hy_rk_getFaceFlux (stage, starState, flat3d, flx, fly, flz, &
               ! mass scalar interface values
 #if NSPECIES+NMASS_SCALARS>0
               ! AH: TODO: Potentially make loop explicit
-         if (scr_flux(HY_MASS ,i,j,k) > 0.) then
-            scr_flux(HY_NUM_FLUX+1:NFLUXES,i,j,k) = &
-               scr_uPlus(HY_NUM_VARS+1:NRECON,i-1*is,j-1*js,k-1*ks)*scr_flux(HY_MASS,i,j,k)
+         if (scr_flux(@M blk(HY_MASS,i,j,k)) > 0.) then
+            scr_flux(@M blkrange(HY_NUM_FLUX+1,NFLUXES,i,j,k)) = &
+               scr_uPlus(@M blkrangeoff(HY_NUM_VARS+1,NRECON,i,-1,is,j,-1,js,k,-1,ks))*scr_flux(@M blk(HY_MASS,i,j,k))
          else
-            scr_flux(HY_NUM_FLUX+1:NFLUXES,i,j,k) = &
-               scr_uMinus(HY_NUM_VARS+1:NRECON,i,j,k)*scr_flux(HY_MASS,i,j,k)
+            scr_flux(@M blkrange(HY_NUM_FLUX+1,NFLUXES,i,j,k)) = &
+               scr_uMinus(@M blkrange(HY_NUM_VARS+1,NRECON,i,j,k))*scr_flux(@M blk(HY_MASS,i,j,k))
          end if
 #endif
      enddo
@@ -261,7 +259,7 @@ subroutine hy_rk_getFaceFlux (stage, starState, flat3d, flx, fly, flz, &
         do j = limits(LOW,JAXIS,stage), limits(HIGH,JAXIS,stage)
         do i = limits(LOW,IAXIS,stage), limits(HIGH,IAXIS,stage)+1
            do v = 1, NFLUXES
-              flx(v,i,j,k) = scr_flux(v,i,j,k)
+              flx(@M blk(v,i,j,k)) = scr_flux(@M blk(v,i,j,k))
            end do
         enddo
         enddo
@@ -273,7 +271,7 @@ subroutine hy_rk_getFaceFlux (stage, starState, flat3d, flx, fly, flz, &
         do j = limits(LOW,JAXIS,stage), limits(HIGH,JAXIS,stage)+1
         do i = limits(LOW,IAXIS,stage), limits(HIGH,IAXIS,stage)
            do v = 1, NFLUXES
-              fly(v,i,j,k) = scr_flux(v,i,j,k)
+              fly(@M blk(v,i,j,k)) = scr_flux(@M blk(v,i,j,k))
            end do
         enddo
         enddo
@@ -285,7 +283,7 @@ subroutine hy_rk_getFaceFlux (stage, starState, flat3d, flx, fly, flz, &
         do j = limits(LOW,JAXIS,stage), limits(HIGH,JAXIS,stage)
         do i = limits(LOW,IAXIS,stage), limits(HIGH,IAXIS,stage)
            do v = 1, NFLUXES
-              flz(v,i,j,k) = scr_flux(v,i,j,k)
+              flz(@M blk(v,i,j,k)) = scr_flux(@M blk(v,i,j,k))
            end do
         enddo
         enddo

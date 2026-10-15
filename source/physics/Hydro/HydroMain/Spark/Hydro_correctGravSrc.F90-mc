@@ -21,7 +21,7 @@
 !! @todo Is this file needed? There is no interface for this subroutine.
 !<
 
-!!Reorder(4):solnData
+!!NOVARIANTS
 
 subroutine Hydro_correctGravSrc(dt)
   use Grid_interface, ONLY : Grid_getTileIterator, Grid_releaseTileIterator
@@ -69,11 +69,11 @@ subroutine Hydro_correctGravSrc(dt)
      do k = blkLimits(LOW,KAXIS), blkLimits(HIGH,KAXIS)
         do j = blkLimits(LOW,JAXIS), blkLimits(HIGH,JAXIS)
            do i = blkLimits(LOW,IAXIS), blkLimits(HIGH,IAXIS)
-              momOld = Uin(DENS_VAR,i,j,k)*Uin(VELX_VAR:VELZ_VAR,i,j,k)
-              momNew = momOld + 0.5*dt*Uin(DENS_VAR,i,j,k)*hy_grav(:,i,j,k)
-              Uin(ENER_VAR,i,j,k) = Uin(ENER_VAR,i,j,k) &
-                   + 0.5*dt*dot_product(momNew, hy_grav(:,i,j,k))/Uin(DENS_VAR,i,j,k)
-              Uin(VELX_VAR:VELZ_VAR,i,j,k) = momNew/Uin(DENS_VAR,i,j,k)
+              momOld = Uin(@M blk(DENS_VAR,i,j,k))*Uin(@M blkrange(VELX_VAR,VELZ_VAR,i,j,k))
+              momNew = momOld + 0.5*dt*Uin(@M blk(DENS_VAR,i,j,k))*hy_grav(:,i,j,k)
+              Uin(@M blk(ENER_VAR,i,j,k)) = Uin(@M blk(ENER_VAR,i,j,k)) &
+                   + 0.5*dt*dot_product(momNew, hy_grav(:,i,j,k))/Uin(@M blk(DENS_VAR,i,j,k))
+              Uin(@M blkrange(VELX_VAR,VELZ_VAR,i,j,k)) = momNew/Uin(@M blk(DENS_VAR,i,j,k))
               ! ekin = 0.5*dot_product(Uin(VELX_VAR:VELZ_VAR,i,j,k), &
               !      Uin(VELX_VAR:VELZ_VAR,i,j,k))
               ! print *, (Uin(EINT_VAR,i,j,k) - (Uin(ENER_VAR,i,j,k)-ekin))/Uin(EINT_VAR,i,j,k)

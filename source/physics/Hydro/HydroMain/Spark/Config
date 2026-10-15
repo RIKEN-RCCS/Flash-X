@@ -7,6 +7,16 @@
 REQUIRES Driver/DriverMain/Unsplit
 REQUIRES physics/Eos
 
+# Select the symbolic four-dimensional array layout used by the Spark macros.
+# Exactly one definition unit must be active because both files intentionally
+# define the same macro names.
+USESETUPVARS GridIndexReordered
+IF GridIndexReordered
+  REQUIRES ./varLast
+ELSE
+  REQUIRES ./varFirst
+ENDIF
+
 EXCLUSIVE fog tvd2 lim03 mp5
 
 

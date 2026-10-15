@@ -20,8 +20,6 @@
 !! @stubref{Hydro}
 !<
 
-!!Reorder(4): hy_fl[xyz],hy_fluxBuf[XYZ],hy_starState,hy_tmpState,Uin
-!!Reorder(4): hy_rope,hy_flux,hy_uPlus,hy_uMinus
 !!NOVARIANTS
 
 #ifdef DEBUG_ALL
@@ -375,13 +373,13 @@ subroutine Hydro(timeEndAdv, dt, dtOld, sweepOrder)
             call Grid_getFluxCorrData_xtra(tileDesc, &
                                            hy_fluxBufX, hy_fluxBufY, hy_fluxBufZ, &
                                            blkLimits(LOW, :), &
-                                           hy_flx(:, xLo:xHi + 1, yLo:yHi, zLo:zHi), &
-                                           hy_fly(:, xLo:xHi, yLo:yHi + K2D, zLo:zHi), &
-                                           hy_flz(:, xLo:xHi, yLo:yHi, zLo:zHi + K3D))
+                                           hy_flx(@M regionall(xLo,xHi,+1,yLo,yHi,+0,zLo,zHi,+0)), &
+                                           hy_fly(@M regionall(xLo,xHi,+0,yLo,yHi,+K2D,zLo,zHi,+0)), &
+                                           hy_flz(@M regionall(xLo,xHi,+0,yLo,yHi,+0,zLo,zHi,+K3D)))
             call hy_rk_correctFluxes(Uin, blkLimits, &
-                                     hy_flx(:, xLo:xHi + 1, yLo:yHi, zLo:zHi), &
-                                     hy_fly(:, xLo:xHi, yLo:yHi + K2D, zLo:zHi), &
-                                     hy_flz(:, xLo:xHi, yLo:yHi, zLo:zHi + K3D), &
+                                     hy_flx(@M regionall(xLo,xHi,+1,yLo,yHi,+0,zLo,zHi,+0)), &
+                                     hy_fly(@M regionall(xLo,xHi,+0,yLo,yHi,+K2D,zLo,zHi,+0)), &
+                                     hy_flz(@M regionall(xLo,xHi,+0,yLo,yHi,+0,zLo,zHi,+K3D)), &
                                      deltas, hy_fareaX, hy_fareaY, hy_fareaZ, hy_cvol, hy_xCenter, &
                                      hy_xLeft, hy_xRight, hy_yLeft, hy_yRight, &
                                      hy_geometry, &

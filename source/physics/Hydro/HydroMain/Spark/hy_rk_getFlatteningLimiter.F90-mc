@@ -29,7 +29,6 @@
 !! @param loGC            Lower ghost cell index
 !<
 
-!!Reorder(4): starState
 !!VARIANTS(GPU): hy_rk_getFlatteningLimiter
 
 subroutine hy_rk_getFlatteningLimiter(stage, starState, flat3d, limits, loGC)
@@ -46,7 +45,7 @@ subroutine hy_rk_getFlatteningLimiter(stage, starState, flat3d, limits, loGC)
 #include "Spark.h"
 
    integer, intent(IN) :: stage, loGC(3)
-   real, dimension(1:, loGC(1):, loGC(2):, loGC(3):), intent(INOUT) :: starState
+   real, @M dim4gc, intent(INOUT) :: starState
    real, dimension(loGC(1):, loGC(2):, loGC(3):), intent(OUT) :: flat3d
    integer, intent(IN), dimension(LOW:HIGH, MDIM, MAXSTAGE) :: limits
 
@@ -79,12 +78,12 @@ subroutine hy_rk_getFlatteningLimiter(stage, starState, flat3d, limits, loGC)
    ThisItMin = 1.0
    do ii = i-1, i+1
       !1e-99 used to be TINY(1.0) but that produced Seg Faults
-      beta = abs(starState(PRES_VAR, ii+1, j, k) - starState(PRES_VAR, ii-1, j, k)) &
-             /max(1e-99, abs(starState(PRES_VAR, ii+2, j, k) - starState(PRES_VAR, ii-2, j, k)))
-      Z = abs(starState(PRES_VAR, ii+1, j, k) - starState(PRES_VAR, ii-1, j, k)) &
-          /(starState(GAMC_VAR, ii, j, k)*starState(PRES_VAR, ii, j, k))
+      beta = abs(starState(@M blkoff(PRES_VAR,ii,+1,j,+0,k,+0)) - starState(@M blkoff(PRES_VAR,ii,-1,j,+0,k,+0))) &
+             /max(1e-99, abs(starState(@M blkoff(PRES_VAR,ii,+2,j,+0,k,+0)) - starState(@M blkoff(PRES_VAR,ii,-2,j,+0,k,+0))))
+      Z = abs(starState(@M blkoff(PRES_VAR,ii,+1,j,+0,k,+0)) - starState(@M blkoff(PRES_VAR,ii,-1,j,+0,k,+0))) &
+          /(starState(@M blk(GAMC_VAR,ii,j,k))*starState(@M blk(PRES_VAR,ii,j,k)))
       flatTilde(IAXIS) = max(0., min(1., (betaMax - beta)/(betaMax - betaMin)))
-      if (starState(VELX_VAR, ii+1, j, k) < starState(VELX_VAR, ii-1, j, k)) then
+      if (starState(@M blkoff(VELX_VAR,ii,+1,j,+0,k,+0)) < starState(@M blkoff(VELX_VAR,ii,-1,j,+0,k,+0))) then
          flatTilde(IAXIS) = max(flatTilde(IAXIS), min(1., (Zmax-Z)/(Zmax-Zmin)))
       else
          flatTilde(IAXIS) = 1.0
@@ -95,12 +94,12 @@ subroutine hy_rk_getFlatteningLimiter(stage, starState, flat3d, limits, loGC)
 #if NDIM>1
    ThisItMin = 1.0
    do jj = j-1, j+1
-      beta = abs(starState(PRES_VAR, i, jj+1, k) - starState(PRES_VAR, i, jj-1, k)) &
-             /max(1.e-99, abs(starState(PRES_VAR, i, jj+2, k) - starState(PRES_VAR, i, jj-2, k)))
-      Z = abs(starState(PRES_VAR, i, jj+1, k) - starState(PRES_VAR, i, jj-1, k)) &
-          /(starState(GAMC_VAR, i, jj, k)*starState(PRES_VAR, i, jj, k))
+      beta = abs(starState(@M blkoff(PRES_VAR,i,+0,jj,+1,k,+0)) - starState(@M blkoff(PRES_VAR,i,+0,jj,-1,k,+0))) &
+             /max(1.e-99, abs(starState(@M blkoff(PRES_VAR,i,+0,jj,+2,k,+0)) - starState(@M blkoff(PRES_VAR,i,+0,jj,-2,k,+0))))
+      Z = abs(starState(@M blkoff(PRES_VAR,i,+0,jj,+1,k,+0)) - starState(@M blkoff(PRES_VAR,i,+0,jj,-1,k,+0))) &
+          /(starState(@M blk(GAMC_VAR,i,jj,k))*starState(@M blk(PRES_VAR,i,jj,k)))
       flatTilde(JAXIS) = max(0., min(1., (betaMax-beta)/(betaMax-betaMin)))
-      if (starState(VELY_VAR, i, jj+1, k) < starState(VELY_VAR, i, jj-1, k)) then
+      if (starState(@M blkoff(VELY_VAR,i,+0,jj,+1,k,+0)) < starState(@M blkoff(VELY_VAR,i,+0,jj,-1,k,+0))) then
          flatTilde(JAXIS) = max(flatTilde(JAXIS), min(1., (Zmax-Z)/(Zmax-Zmin)))
       else
          flatTilde(JAXIS) = 1.0
@@ -111,12 +110,12 @@ subroutine hy_rk_getFlatteningLimiter(stage, starState, flat3d, limits, loGC)
 #if NDIM==3
    ThisItMin = 1.0
    do kk = k-1, k+1
-      beta = abs(starState(PRES_VAR, i, j, kk+1) - starState(PRES_VAR, i, j, kk-1)) &
-             /max(1.e-99, abs(starState(PRES_VAR, i, j, kk+2) - starState(PRES_VAR, i, j, kk-2)))
-      Z = abs(starState(PRES_VAR, i, j, kk+1) - starState(PRES_VAR, i, j, kk-1)) &
-          /(starState(GAMC_VAR, i, j, kk)*starState(PRES_VAR, i, j, kk))
+      beta = abs(starState(@M blkoff(PRES_VAR,i,+0,j,+0,kk,+1)) - starState(@M blkoff(PRES_VAR,i,+0,j,+0,kk,-1))) &
+             /max(1.e-99, abs(starState(@M blkoff(PRES_VAR,i,+0,j,+0,kk,+2)) - starState(@M blkoff(PRES_VAR,i,+0,j,+0,kk,-2))))
+      Z = abs(starState(@M blkoff(PRES_VAR,i,+0,j,+0,kk,+1)) - starState(@M blkoff(PRES_VAR,i,+0,j,+0,kk,-1))) &
+          /(starState(@M blk(GAMC_VAR,i,j,kk))*starState(@M blk(PRES_VAR,i,j,kk)))
       flatTilde(KAXIS) = max(0., min(1., (betaMax-beta)/(betaMax-betaMin)))
-      if (starState(VELZ_VAR, i, j, kk+1) < starState(VELZ_VAR, i, j, kk-1)) then
+      if (starState(@M blkoff(VELZ_VAR,i,+0,j,+0,kk,+1)) < starState(@M blkoff(VELZ_VAR,i,+0,j,+0,kk,-1))) then
          flatTilde(KAXIS) = max(flatTilde(KAXIS), min(1., (Zmax-Z)/(Zmax-Zmin)))
       else
          flatTilde(KAXIS) = 1.0
@@ -129,7 +128,7 @@ subroutine hy_rk_getFlatteningLimiter(stage, starState, flat3d, limits, loGC)
       ! save the solution
       flat3d(i, j, k) = minval(flatTilde(1:NDIM))
 #ifdef FLAT_VAR
-      starState(FLAT_VAR, i, j, k) = flat3d(i, j, k)
+      starState(@M blk(FLAT_VAR,i,j,k)) = flat3d(i, j, k)
 #endif
    end do
    end do

@@ -19,9 +19,6 @@
 !<
 
 !!NOVARIANTS
-!!Reorder(4):Uin,starState,tmpState,fl[xyz]
-!!Reorder(4):scr_rope,scr_flux,scr_uPlus,scr_uMinus
-!!Reorder(4):fluxBuf[XYZ]
 module hy_rk_interface
 
 #include "Simulation.h"
@@ -33,8 +30,8 @@ module hy_rk_interface
                                       blkLimits, blkLimitsGC, lo, loGC)
        implicit none
        integer, intent(IN) :: stage, lo(3), loGC(3)
-       real, dimension(1:, loGC(1):, loGC(2):, loGC(3):), intent(IN) :: Uin
-       real, dimension(1:, loGC(1):, loGC(2):, loGC(3):), intent(OUT) :: starState
+       real, @M dim4gc, intent(IN) :: Uin
+       real, @M dim4gc, intent(OUT) :: starState
        ! lower bounds for tmpState are different between telescoping and non-telescoping
        real, @M hy_tmpState_dimension, intent(OUT) :: tmpState
        integer, dimension(LOW:HIGH, MDIM), intent(IN) :: blkLimits, blkLimitsGC
@@ -57,9 +54,9 @@ module hy_rk_interface
                                    loGC)
        implicit none
        integer, intent(IN) :: stage, loGC(3)
-       real, dimension(1:, loGC(1):, loGC(2):, loGC(3):), intent(IN) :: starState
-       real, dimension(1:, loGC(1):, loGC(2):, loGC(3):), intent(OUT) :: flx, fly, flz
-       real, dimension(1:, loGC(1):, loGC(2):, loGC(3):), intent(OUT) :: scr_rope, scr_flux, scr_uPlus, scr_uMinus
+       real, @M dim4gc, intent(IN) :: starState
+       real, @M dim4gc, intent(OUT) :: flx, fly, flz
+       real, @M dim4gc, intent(OUT) :: scr_rope, scr_flux, scr_uPlus, scr_uMinus
        real, dimension(loGC(1):, loGC(2):, loGC(3):), intent(IN) :: flat3d
        integer, dimension(LOW:HIGH, MDIM, MAXSTAGE), intent(IN) :: limits
        real, dimension(MDIM), intent(IN)  :: deltas
@@ -74,8 +71,8 @@ module hy_rk_interface
                                   dt, dtOld, limits, lo, loGC)
        implicit none
        integer, intent(IN) :: stage, lo(3), loGC(3)
-       real, dimension(1:, loGC(1):, loGC(2):, loGC(3):), intent(IN OUT) :: starState
-       real, dimension(1:, loGC(1):, loGC(2):, loGC(3):), intent(IN) :: flx, fly, flz
+       real, @M dim4gc, intent(IN OUT) :: starState
+       real, @M dim4gc, intent(IN) :: flx, fly, flz
        real, @M hy_tmpState_dimension, intent(IN) :: tmpState
        real, dimension(1:, loGC(1):, loGC(2):, loGC(3):), intent(IN) :: grav
        real, dimension(loGC(1):, loGC(2):, loGC(3):), intent(IN) :: fareaX, fareaY, fareaZ, cvol
@@ -92,7 +89,7 @@ module hy_rk_interface
        implicit none
        integer, intent(IN) :: loGC(3)
        integer, intent(IN) :: tileLimits(LOW:HIGH,MDIM)
-       real, dimension(1:, loGC(1):, loGC(2):, loGC(3):), intent(IN OUT) :: starState
+       real, @M dim4gc, intent(IN OUT) :: starState
      end subroutine hy_rk_renormAbundance
   end interface
 
@@ -102,7 +99,7 @@ module hy_rk_interface
                                     blkLimitsGC, loGC)
        implicit none
        integer, intent(IN) :: loGC(3)
-       real, dimension(1:, loGC(1):, loGC(2):, loGC(3):), intent(IN) :: starState
+       real, @M dim4gc, intent(IN) :: starState
        real, dimension(1:, loGC(1):, loGC(2):, loGC(3):), intent(OUT) :: grav
        real, dimension(loGC(1):), intent(IN) :: radCenter
        real, dimension(loGC(2):), intent(IN) :: thtCenter
@@ -123,7 +120,7 @@ module hy_rk_interface
        implicit none
        integer, intent(IN) :: geometry, lo(3), loGC(3)
        real, pointer :: Uin(:, :, :, :)
-       real, dimension(1:, lo(1):, lo(2):, lo(3):), intent(IN) :: fluxBufX, fluxBufY, fluxBufZ
+       real, @M dim4, intent(IN) :: fluxBufX, fluxBufY, fluxBufZ
        integer, dimension(LOW:HIGH, MDIM), intent(IN) :: blkLimits
        real, dimension(loGC(1):, loGC(2):, loGC(3):), intent(IN) :: fareaX, fareaY, fareaZ, cvol
        real, dimension(loGC(1):), intent(IN) :: xCenter, xLeft, xRight
@@ -139,7 +136,7 @@ module hy_rk_interface
      subroutine hy_rk_shockDetect(Uin, Vc, blkLimitsGC, loGC)
        implicit none
        integer, intent(IN) :: loGC(3)
-       real, dimension(1:, loGC(1):, loGC(2):, loGC(3):), intent(IN OUT) :: Uin
+       real, @M dim4gc, intent(IN OUT) :: Uin
        real, dimension(loGC(1):, loGC(2):, loGC(3):), intent(OUT) :: Vc
        integer, intent(IN) :: blkLimitsGC(LOW:HIGH, MDIM)
      end subroutine hy_rk_shockDetect
@@ -149,7 +146,7 @@ module hy_rk_interface
      subroutine hy_rk_getFlatteningLimiter(stage, starState, flat3d, limits, loGC)
        implicit none
        integer, intent(IN) :: stage, loGC(3)
-       real, dimension(1:, loGC(1):, loGC(2):, loGC(3):), intent(INOUT) :: starState
+       real, @M dim4gc, intent(INOUT) :: starState
        real, dimension(loGC(1):, loGC(2):, loGC(3):), intent(OUT) :: flat3d
        integer, intent(IN), dimension(LOW:HIGH, MDIM, MAXSTAGE) :: limits
      end subroutine hy_rk_getFlatteningLimiter
@@ -162,8 +159,8 @@ module hy_rk_interface
                                   blkLimits, lo, loGC)
        implicit none
        integer, intent(IN) :: stage, lo(3), loGC(3)
-       real, dimension(1:, lo(1):, lo(2):, lo(3):), intent(IN OUT) :: fluxBufX, fluxBufY, fluxBufZ
-       real, dimension(1:, loGC(1):, loGC(2):, loGC(3):), intent(IN) :: flx, fly, flz
+       real, @M dim4, intent(IN OUT) :: fluxBufX, fluxBufY, fluxBufZ
+       real, @M dim4gc, intent(IN) :: flx, fly, flz
        integer, dimension(LOW:HIGH, MDIM), intent(IN) :: blkLimits
        real, dimension(loGC(1):, loGC(2):, loGC(3):), intent(IN) :: fareaX, fareaY, fareaZ
      end subroutine hy_rk_saveFluxBuf

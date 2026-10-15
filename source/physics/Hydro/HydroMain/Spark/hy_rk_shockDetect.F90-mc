@@ -26,7 +26,6 @@
 !! @param loGC            Lower indices including guard cells
 !<
 
-!!Reorder(4): Uin
 !!VARIANTS(GPU): hy_rk_shockDetect
 subroutine hy_rk_shockDetect(Uin, Vc, blkLimitsGC, loGC)
 
@@ -42,7 +41,7 @@ subroutine hy_rk_shockDetect(Uin, Vc, blkLimitsGC, loGC)
 
    !! ---- Argument List ----------------------------------
    integer, intent(IN) :: loGC(3)
-   real, dimension(1:, loGC(1):, loGC(2):, loGC(3):), intent(IN OUT) :: Uin
+   real, @M dim4gc, intent(IN OUT) :: Uin
    real, dimension(loGC(1):, loGC(2):, loGC(3):), intent(OUT) :: Vc
    integer, intent(IN) :: blkLimitsGC(LOW:HIGH,MDIM)
    !! -----------------------------------------------------
@@ -73,9 +72,9 @@ subroutine hy_rk_shockDetect(Uin, Vc, blkLimitsGC, loGC)
    @M hy_DIR_parallel_loop_simd(3) &
    @M hy_DIR_shared([blkLimitsGC, Uin, Vc, hy_tiny])
    @M loop_3d(blkLimitsGC,i,j,k)
-      Uin(SHOK_VAR,i,j,k) = 0.
-      Vc(i,j,k) = sqrt(Uin(GAMC_VAR,i,j,k)*Uin(PRES_VAR,i,j,k)&
-         /max(Uin(DENS_VAR,i,j,k),hy_tiny))
+      Uin(@M blk(SHOK_VAR,i,j,k)) = 0.
+      Vc(i,j,k) = sqrt(Uin(@M blk(GAMC_VAR,i,j,k))*Uin(@M blk(PRES_VAR,i,j,k))&
+         /max(Uin(@M blk(DENS_VAR,i,j,k)),hy_tiny))
    @M loop_end_3d
 
    @M hy_DIR_parallel_loop_simd(3) &
@@ -92,7 +91,7 @@ subroutine hy_rk_shockDetect(Uin, Vc, blkLimitsGC, loGC)
       do ii = i-1, i+1
          do jj = j-1*K2D, j+1*K2D
             do kk = k-1*K3D, k+1*K3D
-               minP = min( minP, Uin(PRES_VAR,ii,jj,kk) )
+               minP = min( minP, Uin(@M blk(PRES_VAR,ii,jj,kk)) )
                minC = min( minC, Vc(ii,jj,kk) )
             end do
          end do
@@ -100,22 +99,22 @@ subroutine hy_rk_shockDetect(Uin, Vc, blkLimitsGC, loGC)
 
       !! We do not need to include non-Cartesian geom factors here.
       !! Undivided divV
-      divv =        Uin(VELX_VAR,i+1,j,  k  ) - Uin(VELX_VAR,i-1,j,  k  )
+      divv =        Uin(@M blkoff(VELX_VAR,i,+1,j,+0,k,+0)) - Uin(@M blkoff(VELX_VAR,i,-1,j,+0,k,+0))
 #if NDIM > 1
-      divv = divv + Uin(VELY_VAR,i,  j+1,k  ) - Uin(VELY_VAR,i,  j-1,k  )
+      divv = divv + Uin(@M blkoff(VELY_VAR,i,+0,j,+1,k,+0)) - Uin(@M blkoff(VELY_VAR,i,+0,j,-1,k,+0))
 #if NDIM == 3
-      divv = divv + Uin(VELZ_VAR,i,  j,  k+1) - Uin(VELZ_VAR,i,  j,  k-1)
+      divv = divv + Uin(@M blkoff(VELZ_VAR,i,+0,j,+0,k,+1)) - Uin(@M blkoff(VELZ_VAR,i,+0,j,+0,k,-1))
 #endif
 #endif
       divv = 0.5*divv
       !! Undivided grad pres
-      gradPx = 0.5*(Uin(PRES_VAR,i+1,j,  k  ) - Uin(PRES_VAR,i-1,j,  k  ))
+      gradPx = 0.5*(Uin(@M blkoff(PRES_VAR,i,+1,j,+0,k,+0)) - Uin(@M blkoff(PRES_VAR,i,-1,j,+0,k,+0)))
       gradPy = 0.
       gradPz = 0.
 #if NDIM > 1
-      gradPy = 0.5*(Uin(PRES_VAR,i,  j+1,k  ) - Uin(PRES_VAR,i,  j-1,k  ))
+      gradPy = 0.5*(Uin(@M blkoff(PRES_VAR,i,+0,j,+1,k,+0)) - Uin(@M blkoff(PRES_VAR,i,+0,j,-1,k,+0)))
 #if NDIM == 3
-      gradPz = 0.5*(Uin(PRES_VAR,i,  j,  k+1) - Uin(PRES_VAR,i,  j,  k-1))
+      gradPz = 0.5*(Uin(@M blkoff(PRES_VAR,i,+0,j,+0,k,+1)) - Uin(@M blkoff(PRES_VAR,i,+0,j,+0,k,-1)))
 #endif
 #endif
       if ( abs(gradPx)+abs(gradPy)+abs(gradPz) .ge. beta*minP ) then
@@ -128,7 +127,7 @@ subroutine hy_rk_shockDetect(Uin, Vc, blkLimitsGC, loGC)
          ! Set SHOCK_VAR to 1.0 if a shock is detected.
          ! One use is for a local hybrid method in the Hydro unit which
          ! applies (a diffusive) HLL solver when SHOK_VAR = 1.
-         Uin(SHOK_VAR,i,j,k) = 1.
+         Uin(@M blk(SHOK_VAR,i,j,k)) = 1.
       endif !endif (SW1 .and. SW2) then
    @M loop_end_3d
 
