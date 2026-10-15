@@ -24,7 +24,7 @@
 default:--with-library=mpi:+io:+grid:-gridinterpolation=monotonic:FlashAvoidOrrery=True
 
 tryAltFiles:-unit=Simulation/SimulationMain/alternativeFiles:AllowAlternativeFiles=Yes:IncludeAlternativeFiles=Yes
-reord_ug:-unit=Grid/GridMain/UGSpatialFirst:-index-reorder:-maxblocks=1:+nofbs
+reord_ug:-unit=Grid/GridMain/UGSpatialFirst:-index-reorder:-maxblocks=1:+nofbs:Grid=UGSpatialFirst
 # io choices
 noio:--without-unit=physics/sourceTerms/EnergyDeposition/EnergyDepositionMain/Laser/LaserIO:--without-unit=IO:
 io:--with-unit=IO:
