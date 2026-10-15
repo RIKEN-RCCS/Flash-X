@@ -12,7 +12,7 @@ LIBRARY STDCXX
 
 USESETUPVARS Grid
 
-IF Grid != 'UG'
+IF Grid not in ['UG','UGSpatialFirst']
    DEFAULT AMR
 ENDIF
 

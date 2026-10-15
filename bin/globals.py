@@ -86,7 +86,7 @@ DEFLTFLAG = 'OPT'
 
 # unit prefixes which setup knows about
 gridPrefix = "Grid/GridMain"
-gridChoices = ["UG","AMR","Samrai","Chombo"]
+gridChoices = ["UG","UGSpatialFirst","AMR","Samrai","Chombo"]
 simulationPrefix = "Simulation/SimulationMain"
 
 # unit keywords for load unit specific modules and enforcing

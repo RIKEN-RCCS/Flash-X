@@ -1,4 +1,4 @@
-!!****if* source/Grid/GridMain/UG/UGReordered/Grid_dump
+!!****if* source/Grid/GridMain/UG/Grid_dump
 !! NOTICE
 !!  Copyright 2022 UChicago Argonne, LLC and contributors
 !!
@@ -21,13 +21,13 @@
 !!                 real,dimension(:,:,:,:),POINTER :: solnData,
 !!                 Type(Grid_tile_t)(IN) :: blockDesc,
 !!                 logical(IN) :: gcell)
-!!  
+!!
 !! DESCRIPTION
-!!  
-!! Dumps the variables specified in "var" to a file. Can be done from 
-!! anywhere in the code, and is useful for diagnostic purposes
-!! This function can only be used on a single block at a time
-!!  
+!!
+!! Binary dumps the physical variables specified in "var". Can be
+!! done from anywhere in the code, and is useful for diagnostic
+!! purposes. It works only with single block per processor mapping.
+!!
 !! This is not an essential interface, only provided as a convenience
 !! for those who need to dump for debugging; test applications may
 !! want to override with a customized implementation.
@@ -45,39 +45,82 @@
 !!               the blockID should always be 1.
 !!               This argument may be unused, especially in UG.
 !!  gcell :: indicates whether to include guardcells in the dump.
-!!             
-!! EXAMPLE
-!!  
-!!  num = 3  !dumping 3 variables
-!!  var(1) = DENS_VAR
-!!  var(2) = PRES_VAR
-!!  var(3) = TEMP_VAR
-!!  blockID = 1  ! local block number
-!!  gcell = .false.
+!!           if gcell = .true. guardcells are included in the dump
+!!                      which means that at the edges, the values are
+!!                      duplicated.
+!!           if gcell = .false. the domain is dumped as though it was
+!!                       a single block
 !!
-!!  call Grid_dump(var, num, blockID, gcell)
-!!  
-!!  will dump the interior cell values of density, pressure and temperature
-!!  for local block number 1.
+!! EXAMPLES
+!!  if num = 3, and var(1)=DENS_VAR, var(2)=PRES_VAR and var(3)=TEMP_VAR
+!!  then the current values of density, pressure and temperature will be
+!!  dumped.
+!!  To explain the use of gcells, consider a global domain with 8x8 points
+!!  mapped on 2x2 processors. each processor has blocks of size
+!!  4x4.If there are 2 guard cells along each dimension, then the
+!!  block size including guardcells is 8x8 and the distribution on
+!!  four processors is as shown below ("*"
+!!  are the interior points and the )"o" are guard cells.
 !!
-!! NOTES
-!!  DENS_VAR, PRES_VAR, TEMP_VAR etc are #defined values in Simulation.h
-!!  indicating the index in the physical data array.
-!!  The routine calling Grid_dump will need to include Simulation.h 
+!!             oooooooo        oooooooo
+!!             oooooooo        oooooooo
+!!             oo****oo        oo****oo
+!!             oo****oo        oo****oo
+!!             oo****oo        oo****oo
+!!             oo****oo        oo****oo
+!!             oooooooo        oooooooo
+!!             oooooooo        oooooooo
+!!
+!!             oooooooo        oooooooo
+!!             oooooooo        oooooooo
+!!             oo****oo        oo****oo
+!!             oo****oo        oo****oo
+!!             oo****oo        oo****oo
+!!             oo****oo        oo****oo
+!!             oooooooo        oooooooo
+!!             oooooooo        oooooooo
+!!
+!!  If gcell is true then dump is of size 16x16 and looks like
+!!
+!!                oooooooooooooooo
+!!                oooooooooooooooo
+!!                oo****oooo****oo
+!!                oo****oooo****oo
+!!                oo****oooo****oo
+!!                oo****oooo****oo
+!!                oooooooooooooooo
+!!                oooooooooooooooo
+!!                oooooooooooooooo
+!!                oooooooooooooooo
+!!                oo****oooo****oo
+!!                oo****oooo****oo
+!!                oo****oooo****oo
+!!                oo****oooo****oo
+!!                oooooooooooooooo
+!!                oooooooooooooooo
+!!
+!!  and if gcell is false the dump is of size 8x8 and looks like
+!!                ********
+!!                ********
+!!                ********
+!!                ********
+!!                ********
+!!                ********
+!!                ********
+!!                ********
+!!    
 !!
 !!***
 
-
+!!REORDER(5): unk
 
 subroutine Grid_dump(var,num, solnData,blockDesc, gcell)
   
   use Grid_tile, ONLY : Grid_tile_t
   use physicalData, ONLY : unk
-  use Grid_data, ONLY : gr_lIndexSize,gr_axisMe,gr_axisNumProcs,gr_guard, gr_meshComm
-  use Grid_data, ONLY : gr_ilo,gr_ihi,gr_jlo,gr_jhi,gr_klo,gr_khi, &
-       gr_iloGc, gr_ihiGc, gr_jloGc, gr_jhiGc, gr_kloGc, gr_khiGc
-
-
+  use Grid_data, ONLY : gr_ilo,gr_ihi,gr_jlo,gr_jhi,gr_klo,gr_khi
+  use Grid_data, ONLY : gr_iloGc,gr_ihiGc,gr_jloGc,gr_jhiGc,gr_kloGc,gr_khiGc
+  use Grid_data, ONLY : gr_axisNumProcs,gr_axisMe, gr_meshComm
 
   implicit none
 
@@ -98,14 +141,15 @@ subroutine Grid_dump(var,num, solnData,blockDesc, gcell)
   
   integer,dimension(MPI_STATUS_SIZE) :: status
   
-  integer(kind=MPI_OFFSET_KIND)::disp, offset
+  integer, parameter   :: i16=SELECTED_INT_KIND(16)
+  integer(kind=i16)    :: disp, offset
   
   integer :: FLASH_ARR
-  integer, dimension(MDIM) :: gsize,lsize,starts
+  integer,dimension(MDIM) :: gsize,lsize,starts
 
-  
   ff1 = "FL3"//char(48+filecount(4))//char(48+filecount(3))//&
        char(48+filecount(2))//char(48+filecount(1))
+  !print*,'filecount',filecount
   filecount(1) = filecount(1) + 1
   do i = 1,4
      if(filecount(i)==10)then
@@ -113,19 +157,23 @@ subroutine Grid_dump(var,num, solnData,blockDesc, gcell)
         filecount(i+1)=filecount(i+1)+1
      end if
   end do
-  
   if((filecount(4) == 0))then !.and.filecount(2) == 0) then
   
 !!! create the data structure for outputting data
      if(gcell) then
-        lsize = gr_lIndexSize/gr_axisNumProcs+gr_guard*2
+        lsize(1)=gr_ihiGC-gr_iloGc+1
+        lsize(2)=gr_jhiGC-gr_jloGc+1
+        lsize(3)=gr_khiGC-gr_kloGc+1
      else
-        lsize = gr_lIndexSize/gr_axisNumProcs
+        lsize(1)=gr_ihi-gr_ilo+1
+        lsize(2)=gr_jhi-gr_jlo+1
+        lsize(3)=gr_khi-gr_klo+1
      end if
-     gsize = lsize*gr_axisNumProcs
+ 
+     gsize=lsize*gr_axisNumProcs
      starts = gr_axisMe*lsize
-     
-     call MPI_TYPE_CREATE_SUBARRAY(NDIM,gsize,lsize,starts,&
+
+     call MPI_TYPE_CREATE_SUBARRAY(MDIM,gsize,lsize,starts,&
           MPI_ORDER_FORTRAN,FLASH_REAL,FLASH_ARR,ierr)
      call MPI_TYPE_COMMIT(FLASH_ARR,ierr)
   
@@ -143,16 +191,13 @@ subroutine Grid_dump(var,num, solnData,blockDesc, gcell)
           MPI_INFO_NULL,ierr)
      if(gcell) then
         do i = 1,num
-!!           gcellarray(:,:,:) = unk(var(i),:,:,:,1)
-           call MPI_File_write_all(fh,unk(:,:,:,var(i),1),&
+           call MPI_File_write_all(fh,unk(var(i),:,:,:,1),&
                 count,FLASH_REAL,status,ierr)
         end do
      else
         do i = 1,num
-!!           nogcellarray(:,:,:) = 
-           !!unk(var(i),gr_ilo:gr_ihi,gr_jlo:gr_jhi,gr_klo:gr_khi,1)
            call MPI_File_write_all&
-                (fh,unk(gr_ilo:gr_ihi,gr_jlo:gr_jhi,gr_klo:gr_khi,var(i),1),&
+                (fh,unk(var(i),gr_ilo:gr_ihi,gr_jlo:gr_jhi,gr_klo:gr_khi,1),&
                 count,FLASH_REAL,status,ierr)
         end do
      end if

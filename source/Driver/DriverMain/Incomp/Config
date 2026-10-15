@@ -7,7 +7,7 @@ USESETUPVARS Grid
 # Currently these simulations have not been tested with
 # uniform grid so throw a setup error if it is requested.
 # First perform a check using Grid setup variable
-IF Grid == "UG"
+IF Grid in ["UG","UGSpatialFirst"]
     SETUPERROR incompFlow simulations are not compatible with uniform grid yet
 ENDIF
 # Add a conflict if above condition fails

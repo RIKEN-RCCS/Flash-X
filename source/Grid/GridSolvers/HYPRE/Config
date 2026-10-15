@@ -1,7 +1,7 @@
 DEFAULT paramesh
 
 USESETUPVARS Grid
-IF Grid=='UG'
+IF Grid in ['UG','UGSpatialFirst']
    DEFAULT UG
 ENDIF
 

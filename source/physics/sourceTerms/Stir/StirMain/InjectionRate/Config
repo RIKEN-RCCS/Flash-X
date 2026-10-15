@@ -1,7 +1,7 @@
 
 USESETUPVARS Grid
 
-IF Grid != 'UG'
+IF Grid not in ['UG','UGSpatialFirst']
    REQUIRES physics/sourceTerms/Stir/StirMain/AMR
 ENDIF
 

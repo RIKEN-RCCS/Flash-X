@@ -1,4 +1,4 @@
-!!****if* source/Grid/GridMain/UG/UGReordered/Grid_fillGuardCells
+!!****if* source/Grid/GridMain/UG/Grid_fillGuardCells
 !! NOTICE
 !!  Copyright 2022 UChicago Argonne, LLC and contributors
 !!
@@ -24,19 +24,23 @@
 !!                  optional,integer(IN) :: maskSize,
 !!                  optional,logical(IN) :: mask(maskSize),
 !!                  optional,logical(IN) :: makeMaskConsistent,
+!!                 optional, logical(IN) :: doLogMask,
 !!                  optional,integer(IN) :: selectBlockType,
 !!                  optional,logical(IN) :: unitReadsMeshDataOnly)
 !!
 !!
 !! DESCRIPTION 
 !!  
-!!  Fills guard cells for all blocks.  
-!! 
-!!  This routine has a flexible interface and offers
-!!  the user a number of options depending on the arguments passed in the interface.  
-!!  The user can choose to fill guardcells for all
-!!  variables or some of the  variables, fill guardcells in all directions
-!!  or just a single direction and fill guardcells on a given level (to be implemented).
+!!  The argument "gridDataStruct" can take on one of many valid 
+!!  values to determine a specific grid data structure on which to apply
+!!  the guardcell fill operation. The currently available options are listed with
+!!  the arguments. Most users will use CENTER as the option, 
+!!  since applications typically use the cell centered grid data, and they want
+!!  guardcells to be filled for all the variables.
+!!  More specialized applications, such as the unsplit methods, may want to use
+!!  other options. 
+!!  The user can also choose to fill guard cells either in a single direction,
+!!  or all of them. 
 !!
 !!
 !! ARGUMENTS 
@@ -45,18 +49,14 @@
 !!  gridDataStruct - integer constant, defined in "constants.h", 
 !!                   indicating which grid data structure 
 !!                   variable's guardcells to fill.
-!!                   Paramesh has 5 data structures for grid variables, the first
-!!                   four include all physical variables defined on the mesh. The 
-!!                   fifth one includes a single variable.
+!!                   UG has 4 data structures for grid variables that
+!!                   can have their guardcells filled. 
 !!
-!!               unk                cell centered, 
-!!               facex,facey,facez  face centered along i,j,k direction respectively
-!!               work               cell centered, single variable.
-!!                   Uniform grid supports the first four data structure, there is 
-!!                   no "work" data structure in UG
-!!                   With those datastructures, the ones included for specific 
-!!                   values of gridDataStruct are  
-!!
+!!                   unk                all cell centered variables in the grid
+!!                   facex,facey,facez  all face centered variables along i,j,k 
+!!                                      direction respectively
+!!                   
+!!                   valid values of gridDataStruct are  
 !!                   CENTER             unk only
 !!                   WORK               has no meaning in UG
 !!                   The face variables are not yet implemented in UG
@@ -73,60 +73,25 @@
 !!         in constants.h IAXIS, JAXIS or KAXIS to fill guardcells in only one 
 !!         direction.        
 !!         All layers of guardcells in the given direction(s) are filled.
-!!         In this current UGReordered implementation, idir is ignored and a
-!!         full guardcell fill in all directions is always performed, except
-!!         for boundary conditions at the edges of the physical domain.
+!!         In the current UG implementation, idir is ignored and a full
+!!         guardcell fill in all directions is always performed.
 !!
 !!         THE REMAINING ARGUMENTS HAVE NO MEANING IN UG
 !!
 !!  minLayers - number of guardcell layers requested for all directions.
-!!              The caller requests at least this many layers of
-!!              guardcells to be filled.  If idir is given as one of IAXIS,
-!!              JAXIS, or KAXIS, this applies to any directions NOT selected by
-!!              idir. On the other hand, if idir is given as ALLDIR, then
-!!              minLayers appliers to all directions equally.
-!!              If not specified, the default is 0 if idir is given as IAXIS,
-!!              JAXIS, or KAXIS, meaning no guardcells need to be filled in for
-!!              the directions perpendicular to what idir selects; the default
-!!              is NGUARD, the full number of available guardcells, if idir
-!!              is ALLDIR.
-!!              Note that the caller can specify, using minLayers, how many
-!!              layers it needs filled, but the implementation may do
-!!              more and actually fill all or some additional layers.
-!!              The caller must therefore not rely on some guardcells
-!!              remaining unchanged.
-!!              In the current UG implementation, minLayers is ignored
-!!              and a full guardcell fill in all directions is always
-!!              performed, except for bondary conditions at the edges of
-!!              the physical domain, where the code currently always behaves
-!!              as if minLayers=0 had been specified.
-!! 
-!!  eosMode -   the EOS mode being used by the solver that is calling the 
-!!              routine. Some of the valid values are :
-!!              MODE_DENS_EI     density and energy input, pressure and temp output
-!!              MODE_DENS_PRES   density/pressure input, temperature/energy output
-!!              MODE_DENS_TEMP   density/temperature input, pressure/energy output
-!!              (IGNORED in this implementation)
-!!  doEos    - a logical variable indicating if the calling routine wants the
-!!             gcfill process to also make sure that Eos is applied to achieve
-!!             thermodynamically consistent values of all variables.
-!!             The UG implementation does not act upon this argument, since
-!!             guard cell filling never involves interpolation or averaging.
 !!
-!!  maskSize - the size of the mask array. 
+!!   eosMode  - The mode in which eos is to be applied
+!!   doEos    - the UG implementation does not act upon this argument
+!!   maskSize - the size of the mask array. 
 !! 
 !!  mask -  It is a one-dimensional logical array 
 !!          with indices corresponding to variables in the grid data
 !!          structures. If a variable should have its guardcells filled,
 !!          the corresponding element in "mask" is true, otherwise it is
 !!          false.
-!!          The mask is always ignored if the runtime parameter
-!!          enableMaskedGCFill is set .FALSE.
+!!          The mask is always ignored in this implementation.
 !!  
-!! makeMaskConsistent - If true when mask is applied, it is made sure that for
-!!          all the selected variables in the mask, the ones they are dependent
-!!          on are true too. It is also determined whether there is a need to 
-!!          apply Eos if doEos argument is true.
+!! makeMaskConsistent - IGNORED in this implementation
 !!
 !! selectBlockType - IGNORED
 !!
@@ -134,6 +99,7 @@
 !!                         does not update any internal grid data.  This
 !!                         allows us to skip the next guard cell fill because
 !!                         the guard cells already contain up to date data.
+!!                         IGNORED in this implementation.
 !!
 !! EXAMPLE
 !!
@@ -150,12 +116,10 @@
 !!   #include "Simulation.h"
 !!   #include "constants.h"
 !!
-!!      call Grid_fillGuardCells( WORK, ALLDIR)
+!!      call Grid_fillGuardCells( CENTER_FACES, ALLDIR)
 !!     
-!!     This call fills guardcells along all directions and the
-!!     operation is applied to the WORK data structure available in
-!!     paramesh only.  Thus this call is not supported in this
-!!     implementation.
+!!     This call fills guardcells along all directions in both
+!!     cell centered and face centered data structures.
 !!
 !! NOTES
 !!
@@ -163,26 +127,30 @@
 !!  
 !!***
 
+
 #ifdef DEBUG_ALL
 #define DEBUG_GRID
 #endif
 
 
 subroutine Grid_fillGuardCells( gridDataStruct,idir,minLayers,eosMode,doEos&
-     &, maskSize, mask, makeMaskConsistent, doLogMask,selectBlockType,&
+     &, maskSize, mask, makeMaskConsistent, doLogMask,selectBlockType, &
      unitReadsMeshDataOnly)
 
-  use Grid_interface, ONLY : Grid_getBlkIndexLimits
-  use gr_bcInterface, ONLY : gr_bcApplyToAllBlks
+  use Grid_data, ONLY : gr_axisComm, gr_exch, gr_gridDataStruct, &
+       gr_justExchangedGC,gr_domainBC, &
+       gr_offset,gr_allPeriodic,gr_bndOrder, gr_meshMe
+  use Grid_interface, ONLY : Grid_getTileIterator, Grid_releaseTileIterator
   use Driver_interface, ONLY : Driver_abort
-  use Grid_data, ONLY : gr_axisComm, gr_exch, &
-        gr_numDataStruct, gr_gridDataStruct, &
-        gr_offset, gr_justExchangedGC,gr_bndOrder,gr_allPeriodic, gr_meshMe
-
- implicit none
+  use gr_bcInterface, ONLY : gr_bcApplyToAllBlks
+  use Grid_tile, ONLY : Grid_tile_t
+  use Grid_iterator, ONLY: Grid_iterator_t
+  implicit none
 #include "constants.h"
 #include "Simulation.h"
 
+  type(Grid_tile_t) :: tileDesc
+  type(Grid_iterator_t) :: itor
   integer, intent(in) :: gridDataStruct
   integer, intent(in) :: idir
   integer, optional,intent(in) :: minLayers
@@ -193,61 +161,63 @@ subroutine Grid_fillGuardCells( gridDataStruct,idir,minLayers,eosMode,doEos&
   logical, optional,intent(IN) :: makeMaskConsistent
   logical, optional,intent(IN) :: doLogMask  ! ignored in this implementation
   integer,optional,intent(in) :: selectBlockType
-  logical, optional, intent(IN) :: unitReadsMeshDataOnly
+  logical, optional, intent(in) :: unitReadsMeshDataOnly
 
-  integer,dimension(MDIM) :: guard
+  ! integer that hold the boundary condition type (ie, PERIODIC)
+  integer,dimension(MDIM) :: guard !DEV: unused - KW 2010-09-22
   integer,dimension(LOW:HIGH,MDIM) :: blkLimits, blkLimitsGC
-  integer :: blockID = 1
-  integer :: i,j,k,beginDataType,endDataType,n
-  logical :: isWork=.false.
-  integer :: axis, localGridDataStruct
 
+  integer :: i,j,k,beginDataType,endDataType
+  integer :: axis,n,localGridDataStruct
+  logical :: isWork=.false.
+  
   !These are arrays to hold the sending start point indicies and receiving
   !start point indicies for the MPI data types in the shift data subroutine
   !They are used to specify the starting incidies in the unk array
-
+  ! The four entries are i, j, k, and variable, matching spatial-first storage.
   integer, dimension(MDIM, MDIM+1) :: sendRight, sendLeft, recvRight, recvLeft
 
+  logical,save :: firstTime=.true.
+
   !if we have just exchanged guardcells then we don't need to do in again.
-  !FOR FUTURE: not yet implemented gr_justExchanged
+  !FOR FUTURE: not yet implemented
 !!$  if (gr_justExchanged) then
 !!$     return
 !!$  end if
 
+  
 
 #ifdef DEBUG_GRID
+
   if((gr_domainBC(LOW,IAXIS) == PERIODIC).and.(gr_domainBC(HIGH,IAXIS) /= PERIODIC)) then
      call Driver_abort("Gaurd Cell fill : one edge is periodic, one is not")
   end if
-
+  
   if((gr_domainBC(LOW,JAXIS) == PERIODIC).and.(gr_domainBC(HIGH,JAXIS) /= PERIODIC)) then
      call Driver_abort("Gaurd Cell fill : one edge is periodic, one is not")
   end if
-
+  
   if((gr_domainBC(LOW,KAXIS) == PERIODIC).and.(gr_domainBC(HIGH,KAXIS) /= PERIODIC)) then
      call Driver_abort("Gaurd Cell fill : one edge is periodic, one is not")
   end if
-
+  
   if((gr_domainBC(LOW,IAXIS) /= PERIODIC).and.(gr_domainBC(HIGH,IAXIS) == PERIODIC)) then
      call Driver_abort("Gaurd Cell fill : one edge is periodic, one is not")
   end if
-
+  
   if((gr_domainBC(LOW,JAXIS) /= PERIODIC).and.(gr_domainBC(HIGH,JAXIS) == PERIODIC)) then
      call Driver_abort("Gaurd Cell fill : one edge is periodic, one is not")
   end if
-
-
+  
   if((gr_domainBC(LOW,KAXIS) /= PERIODIC).and.(gr_domainBC(HIGH,KAXIS) == PERIODIC)) then
      call Driver_abort("Gaurd Cell fill : one edge is periodic, one is not")
   end if
-
+  
 #endif
-
   
   localGridDataStruct=gridDataStruct
   if((gridDataStruct==CENTER_FACES).and.(NFACE_VARS==0))&
        localGridDataStruct=CENTER
-  
   select case(localGridDataStruct)
   case (CENTER)
      beginDataType=CENTER_DATATYPE
@@ -270,36 +240,55 @@ subroutine Grid_fillGuardCells( gridDataStruct,idir,minLayers,eosMode,doEos&
         beginDataType=FACEY_DATATYPE
         endDataType=FACEY_DATATYPE
      else
-        if(gr_meshMe==MASTER_PE)print*,'warning: trying to fill face along Y for 1D problem'
+        if(gr_meshMe == MASTER_PE)print*,'warning: trying to fill face along Y for 1D problem'
+        return
      end if
   case(FACEZ)
-     If(NDIM>2) then
+
+     if(NDIM>2) then
         beginDataType=FACEZ_DATATYPE
         endDataType=FACEZ_DATATYPE
      else
-        if(gr_meshMe==MASTER_PE)print*,'warning: trying to fill face along Z for 2D problem'
+        if(gr_meshMe == MASTER_PE)print*,'warning: trying to fill face along Z for 2D problem'
+        return
      end if
+  case default
+     call Driver_abort('Grid_fillGuardCells: unsupported grid data structure')
   end select
-  
 
   do i = beginDataType,endDataType
-     call Grid_getBlkIndexLimits(blockID,blkLimits,blkLimitsGC,gr_gridDataStruct(i))
-     recvLeft(:,:)=1
-     sendLeft(:,:)=1
-     recvRight(:,:)=1
-     sendRight(:,:)=1 !! do a default initialization of all starting points
-
-     do j = 1,NDIM
-        sendRight(j, j) = blkLimits(HIGH,j)-blkLimits(LOW,j)+2-gr_offset(i,j)
-        
-        !index of first interior cell to be sent to be GC on block to left
-        sendLeft(j, j) = blkLimits(LOW,j)+gr_offset(i,j)
-        
-        recvLeft(j, j) = blkLimits(HIGH,j)+1 !recv index of GC 
-        call gr_shiftData(gr_axisComm(j), gr_exch(i,j), &
-             sendRight(j,:), sendLeft(j,:), &
-             recvRight(j,:),recvLeft(j,:),gr_gridDataStruct(i))
+     call Grid_getTileIterator(itor, ALL_BLKS, tiling=.FALSE.)
+     do while(itor%isValid())
+        call itor%currentTile(tileDesc)
+        blkLimits(:,:)=tileDesc%limits
+        blkLimitsGC(:,:)=tileDesc%grownLimits
+        guard(:)=blkLimits(LOW,:)-blkLimitsGC(LOW,:) 
+        recvLeft(:,MDIM+1)=1
+        sendLeft(:,MDIM+1)=1
+        recvRight(:,MDIM+1)=1
+        sendRight(:,MDIM+1)=1
+        do k=1,MDIM
+           recvLeft(:,k)=blkLimitsGC(LOW,k)
+           sendLeft(:,k)=blkLimitsGC(LOW,k)
+           recvRight(:,k)=blkLimitsGC(LOW,k)
+           sendRight(:,k)=blkLimitsGC(LOW,k)
+        end do
+        !! do a default initialization of all starting points
+        !! and then adjust individual ones as needed
+        !! index of interior cell which will be first GC in block to right
+        do j = 1,NDIM
+           sendRight(j,j) = blkLimits(HIGH,j) - guard(j) + 1
+           !index of first interior cell to be sent to be GC on block to left
+           sendLeft(j,j) = blkLimits(LOW,j)
+           recvLeft(j,j) = blkLimits(HIGH,j)+1 !recv index of GC
+           
+           call gr_shiftData(gr_axisComm(j), gr_exch(i,j), &
+                sendRight(j,:), sendLeft(j,:), &
+                recvRight(j,:),recvLeft(j,:),gr_gridDataStruct(i))
+        end do
+        call itor%next()
      end do
+     call Grid_releaseTileIterator(itor)
   end do
   if(.not.gr_allPeriodic) then
      do n = 0,NDIM-1
@@ -308,5 +297,6 @@ subroutine Grid_fillGuardCells( gridDataStruct,idir,minLayers,eosMode,doEos&
      end do
   end if
   gr_justExchangedGC = .true.
+  return
 end subroutine Grid_fillGuardCells
 

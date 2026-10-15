@@ -6,8 +6,8 @@ USESETUPVARS ThreeT
 # Requires use of the Grid SetupVariable
 USESETUPVARS Grid
 
-IF Grid not in ["","PM4DEV","PM40","PM3","UG","Amrex","Milhoja"]
-   SETUPERROR The variable Grid is not in ["","PM4DEV","PM40","PM3","UG","Amrex","Milhoja"]
+IF Grid not in ["","PM4DEV","PM40","PM3","UG","UGSpatialFirst","Amrex","Milhoja"]
+   SETUPERROR The variable Grid is not in ["","PM4DEV","PM40","PM3","UG","UGSpatialFirst","Amrex","Milhoja"]
 ENDIF
 
 REQUIRES Grid/localAPI
@@ -17,6 +17,10 @@ DEFAULT AMR
 
 IF Grid=='UG'
    DEFAULT UG
+ENDIF
+
+IF Grid=='UGSpatialFirst'
+   DEFAULT UGSpatialFirst
 ENDIF
 
 # Lines that begin with 'D' as in 'Description' will end up as
@@ -208,4 +212,4 @@ PARAMETER gr_tileSizeX INTEGER NXB [ 1 ... ]
 PARAMETER gr_tileSizeY INTEGER NYB [ 1 ... ]
 PARAMETER gr_tileSizeZ INTEGER NZB [ 1 ... ]
 
-EXCLUSIVE paramesh UG Amrex
+EXCLUSIVE paramesh UG UGSpatialFirst Amrex
