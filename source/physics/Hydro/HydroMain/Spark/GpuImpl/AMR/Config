@@ -1,0 +1,11 @@
+# Batched GPU Hydro for 2D Cartesian, telescoping RK2, ordinary AMR reflux.
+PPDEFINE HY_GPU_AMR
+REQUIRES Grid/GridMain/AMR
+REQUIRES physics/Eos/EosMain/Gamma
+LIBRARY OMP_OL
+PARAMETER hy_gpuBatchSize INTEGER 32
+
+USESETUPVARS useMP5, useTVD, useFog, useLim03, useGLM, nontelescoping, omp_offload, oacc, Milhoja, threadWithinBlock, GridIndexReorder
+IF useMP5 or useTVD or useFog or useLim03 or useGLM or nontelescoping or omp_offload or oacc or Milhoja or threadWithinBlock or GridIndexReorder
+  SETUPERROR gpuAmr requires default WENO telescoping without legacy offload or within-block threading
+ENDIF
