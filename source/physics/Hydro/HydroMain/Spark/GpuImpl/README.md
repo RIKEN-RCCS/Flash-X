@@ -15,12 +15,21 @@ block/spatial loop covers the complete batch. Full minus/plus reconstruction
 arrays remain; no stencil tiling, reconstruction/flux fusion, or tuned arithmetic
 has been introduced. Small private arrays and original helper control flow remain.
 
+GPU expansion substitutes helper arguments directly instead of emitting
+ASSOCIATE bindings. NVFORTRAN's unoptimized device compilation reported an
+unsupported pghpf_ptr_assn_i8 runtime operation for those bindings. Array maps
+and offsets now have named parameter arrays; spacing is initialized once per
+host kernel call. Helper definitions in NewImpl are unchanged. Direct substitution
+requires side-effect-free actual arguments and does not promise once-only
+evaluation for expressions. Current device calls satisfy this restricted contract.
+Run `python3 test_generation.py` for source-generation checks (no Fortran execution).
+
 ## RIKYU build and execution
 
 No compilation or numerical/device execution has been performed locally. The
 RIKYU compiler, accelerator architecture, OpenMP runtime and module environment
 must be supplied by the site. An OpenMP target Fortran compiler supporting
-ASSOCIATE, IEEE intrinsics, reductions and persistent mappings is required.
+IEEE intrinsics, reductions and persistent mappings is required.
 The existing expander produces Fortran 2003 helper constructs; the example
 program additionally uses NEWUNIT (Fortran 2008).
 
@@ -89,3 +98,20 @@ when comparing CPU/reference timings. The NewImpl default builder enables
 runtime checks, whereas this Makefile defaults to optimization without checks.
 Repeat runs and report hardware/compiler/flags and problem sizes. No speedup or
 performance penalty has yet been measured.
+
+## NVHPC diagnostic build on RIKYU
+
+Regenerate first, then rebuild all generated sources with the same compiler:
+
+```sh
+python3 generate.py
+cd build
+nvfortran -O0 -mp=gpu -gpu=lineinfo -Minfo=mp hydro_types.f90 batch_kernels.f90 periodic_batch.F90 -o periodic_batch_debug
+export OMP_TARGET_OFFLOAD=MANDATORY
+compute-sanitizer --tool memcheck --log-file sanitizer.log ./periodic_batch_debug 32 4 0.001 debug.csv > debug.out 2>&1
+```
+
+This command requests line information without combining it with device debug
+information from `-g`. Removing descriptor association addresses the reported
+compilation barrier; a successful device run and sanitizer report are still
+needed to establish whether the earlier illegal address is resolved.

@@ -12,6 +12,30 @@ m = importlib.util.module_from_spec(spec)
 sys.modules[spec.name] = m
 spec.loader.exec_module(m)
 
+# Use the reference expander for hygiene and control flow, but omit argument
+# descriptor association in device code. Actuals in this baseline are pure
+# references/expressions: unlike ASSOCIATE, substitution does not evaluate once.
+_reference_scoped_definition = m.scoped_definition
+
+def device_scoped_definition(macro, actuals, serial):
+    text = _reference_scoped_definition(macro, actuals, serial)
+    if not macro.args:
+        return text
+    start = text.index("associate ( &\n")
+    # The reference emitter puts one selector per line, including the last ')'.
+    lines = text[start:].splitlines(keepends=True)
+    text = text[:start] + ''.join(lines[1+len(macro.args):])
+    text = text.replace('end associate\n', '')
+    mapping = {}
+    for name, actual in zip(macro.args, actuals):
+        if actual.strip().startswith('(/'):
+            raise m.ExpansionError('Device helpers require named array actuals')
+        identifier = re.fullmatch(r'[A-Za-z_]\w*(?:%[A-Za-z_]\w*)*', actual.strip())
+        mapping[f'macro_scope_{serial}_arg_{name}'.lower()] = actual if identifier else '('+actual+')'
+    return m.rename_fortran(text, mapping, f'macro_scope_{serial}')
+
+m.scoped_definition = device_scoped_definition
+
 def generate(output):
     output.mkdir(parents=True, exist_ok=True)
     definitions = [REF/'hydro_layout.ini', REF/'hydro_helpers.ini',
@@ -27,6 +51,8 @@ def generate(output):
     face = face.replace('return', 'exit cell_work')
     source = source.replace('! INSERT_REFERENCE_FACE_BODY', face)
     source = m.lower_blocks(exp.expand_text(source))
+    if re.search(r'\bassociate\s*\(', source, re.I):
+        raise m.ExpansionError('Unexpected device ASSOCIATE remains')
     # Hoisted macro temporaries must be private to each collapsed iteration.
     def private(match):
         declarations = match.group(1)
@@ -46,6 +72,11 @@ def generate(output):
     end=source.index('  end subroutine',start)
     part=source[start:end].replace('    error=0', '    inputMap=[1,2,3,4,5,6,7]; outputMap=[1,2,3,4,5]\n    shockVariable=9; d=1; e=[1,0,0]\n    error=0')
     source=source[:start]+part+source[end:]
+    for name in ['update','timestep_rate']:
+        start=source.index('  subroutine '+name+'(')
+        end=source.index('  end subroutine',start)
+        part=source[start:end].replace('    error=0', '    spacing=[dx,1._rk,1._rk]\n    error=0')
+        source=source[:start]+part+source[end:]
     resident={'flatten':'state,flat','reconstruct':'state,flat,minus,plus',
               'faces':'state,minus,plus,flux','update':'reference,state,flux,integrated',
               'acoustics':'state,soundWork','markers':'state,soundWork','timestep_rate':'state'}
