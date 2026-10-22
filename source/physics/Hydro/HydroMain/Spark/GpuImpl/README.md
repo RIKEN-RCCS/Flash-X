@@ -183,3 +183,105 @@ can be run manually with OMP_TARGET_OFFLOAD=DISABLED and GPU_ALLOW_HOST=1;
 record OMP_NUM_THREADS and CPU affinity. The campaign runner intentionally
 rejects host execution. A comparison against the original Flash-X performance
 requires its own matched numerical configuration and timing boundaries.
+
+## Two-dimensional configurations
+
+A separate 2D template, driver, and backend extend the same arithmetic to both
+spatial directions. Existing 1D builds and command lines remain available.
+Generate into a distinct directory and build on RIKYU:
+
+```sh
+python3 generate.py --dimension 2
+cd build2d
+make nvidia > build-opt.log 2>&1
+# Or: make nvidia-debug > build-debug.log 2>&1
+export OMP_TARGET_OFFLOAD=MANDATORY
+./periodic_batch_opt 128 128 2 2 0.02 x_tube.csv 1
+```
+
+Arguments are global Nx, global Ny, blocks-x, blocks-y, final time, CSV path,
+case number, and optional maximum steps (0 means no step cap). Defaults are
+128x128 cells, 2x2 blocks, time 0.05, gpu2d.csv, case 1, and no step cap.
+Both global extents must be at least eight and divisible by their block-grid
+extents. The domain is [0,1)x[0,1), periodic in both axes; gamma=1.4 and SSPRK3
+are unchanged. Cases are:
+
+1. x-aligned Sod tube: high state where x<0.5, constant in y.
+2. y-aligned tube: high state where y<0.5, constant in x.
+3. diagonal periodic stripe: high state where modulo(x+y,1)<0.5.
+
+The initial high/low states are the same as the 1D test, with both velocities
+zero. Case 3 exercises both velocity components and multidimensional transport;
+it is not compared to the ordinary 1D Sod exact profile.
+
+Each stage computes x reconstruction/flux followed by y reconstruction/flux,
+reusing minus/plus scratch sequentially. Both directional flux arrays survive
+until the unsplit update. Corner guards copy directly from owning periodic
+interiors, including when a block has fewer than three cells along an axis.
+Positive x/y shared faces take their negative-face neighbor's flux. Integrated
+fluxes include dy for x faces and dx for y faces (unit depth). Kernels cover
+block,j,i with collapse(3). Shock neighborhoods and flattening use ndim=2;
+CFL retains the original maximum directional rate and CFL=0.4. No alternate
+multidimensional limiter, GPU arithmetic optimization, or AMR support is added.
+
+### Validation before 2D timing
+
+From GpuImpl, on the allocated GPU:
+
+```sh
+python3 validate_2d.py --exe build2d/periodic_batch_opt
+```
+
+This runs 64x64 cases 1/2/3 with block grids 1x1, 2x2, 4x1 and 1x4, compares
+profiles across decompositions, checks x/y rotational agreement, and compares
+96x64 diagonal runs with 1x1 and 3x2 blocks. Every run must pass the solver's
+mass, both momentum components, and energy conservation check (1e-9). The
+comparison tool additionally requires positive finite candidate states and
+profile differences at most 1e-9. The output directory retains logs and profiles;
+rerunning uses the same filenames and replaces them.
+
+For an independent planar reference, run NewImpl's already-built CPU executable
+with 64 cells and time 0.02, then pass that CSV to the validator:
+
+```sh
+# From NewImpl/build/standalone:
+./periodic_shock_tube 64 1 0.02 reference64.csv 3
+# From GpuImpl:
+python3 validate_2d.py --reference-1d ../NewImpl/build/standalone/reference64.csv
+```
+
+Every row of the planar 2D solution is compared to the corresponding 1D profile;
+the transverse velocity must also be below tolerance. This check assumes square
+cells and equal global x/y resolution to match timestep selection. Without
+--reference-1d the validator checks decomposition/rotation consistency and
+conservation but has no independent numerical reference for the diagonal case.
+
+Manual comparisons are also available:
+
+```sh
+python3 compare_2d.py validation2d/64x64-1x1-case3.csv validation2d/64x64-2x2-case3.csv
+python3 compare_2d.py validation2d/64x64-1x1-case1.csv validation2d/64x64-1x1-case2.csv --transpose
+```
+
+CSV columns are x,y,density,velocity_x,velocity_y,pressure,internal_energy,
+total_energy, in global y-then-x row order. The 1D compare.py/benchmark.py use
+a different CLI/CSV schema and must not be used for these 2D executables.
+
+For initial manual throughput runs, use the optional step cap:
+
+```sh
+# From build2d, after validation, without sanitizer:
+./periodic_batch_opt 512 512 8 8 1.0 perf2d.csv 3 100
+```
+
+Record the actual step count, compiler flags, hardware, block dimensions and
+resident/transfer-inclusive times; repeat configurations before drawing timing
+conclusions. Large 2D grids increase memory and output volume. For local extents
+nx,ny,nb, device buffers require approximately
+8*nb*(34*(nx+6)*(ny+6)+20*(nx+1)*(ny+1)) bytes, excluding compiler temporaries
+and runtime allocations. The host also retains backing allocations. Keep the
+same caution about process startup and timing boundaries as in the 1D campaign.
+
+Only source generation and Python comparison checks have been performed locally.
+RIKYU compilation, sanitizer checks and numerical validation remain required for
+this 2D extension.

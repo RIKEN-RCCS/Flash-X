@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate a 1D batched OpenMP-target baseline; never compile or execute it."""
+"""Generate a 1D/2D batched OpenMP-target baseline; never compile or execute it."""
 from pathlib import Path
 import argparse
 import importlib.util
@@ -36,12 +36,14 @@ def device_scoped_definition(macro, actuals, serial):
 
 m.scoped_definition = device_scoped_definition
 
-def generate(output):
+def generate(output, dimension=1):
+    if dimension not in (1,2):
+        raise ValueError("dimension must be 1 or 2")
     output.mkdir(parents=True, exist_ok=True)
     definitions = [REF/'hydro_layout.ini', REF/'hydro_helpers.ini',
-                   REF/'update_helpers.ini', REF/'diagnostic_helpers.ini', REF/'driver_helpers.ini', ROOT/'gpu_layout.ini']
+                   REF/'update_helpers.ini', REF/'diagnostic_helpers.ini', REF/'driver_helpers.ini', ROOT/('gpu_layout_2d.ini' if dimension==2 else 'gpu_layout.ini')]
     exp = m.MacroExpander(m.load_macros(definitions))
-    source = (ROOT/'batch_kernels.F90-mc').read_text()
+    source = (ROOT/('batch_kernels_2d.F90-mc' if dimension==2 else 'batch_kernels.F90-mc')).read_text()
     # Reuse the reference face algebra verbatim, excluding traversal/reduction/reporting.
     face = (REF/'hy_getFaceFlux.F90-mc').read_text()
     face = face.split('            @hy_assembleFaceStates', 1)[1]
@@ -64,18 +66,25 @@ def generate(output):
                 names.append(re.match(r'\s*(\w+)', item).group(1))
         groups=[names[i:i+3] for i in range(0,len(names),3)]
         clauses=['!$omp& private(' + ','.join(group) + ') &' for group in groups]
-        return declarations + '\n    error=0\n!$omp target teams distribute parallel do collapse(2) &\n' + \
+        return declarations + '\n    error=0\n!$omp target teams distribute parallel do collapse('+str(dimension+1)+') &\n' + \
             '\n'.join(clauses) + '\n!$omp& reduction(max:error)'
     source = re.sub(r'! PRIVATE_BEGIN\n(.*?)! PRIVATE_END', private, source, flags=re.S)
     # Shared small maps are initialized on the host before the face launch.
     start=source.index('  subroutine faces')
     end=source.index('  end subroutine',start)
-    part=source[start:end].replace('    error=0', '    inputMap=[1,2,3,4,5,6,7]; outputMap=[1,2,3,4,5]\n    shockVariable=9; d=1; e=[1,0,0]\n    error=0')
+    init='    inputMap=[1,2,3,4,5,6,7]; outputMap=[1,2,3,4,5]\n'
+    init+=('    shockVariable=9; e=0; e(d)=1\n' if dimension==2 else '    shockVariable=9; d=1; e=[1,0,0]\n')
+    part=source[start:end].replace('    error=0',init+'    error=0')
     source=source[:start]+part+source[end:]
     for name in ['update','timestep_rate']:
         start=source.index('  subroutine '+name+'(')
         end=source.index('  end subroutine',start)
-        part=source[start:end].replace('    error=0', '    spacing=[dx,1._rk,1._rk]\n    error=0')
+        part=source[start:end].replace('    error=0', ('    spacing=[dx,dy,1._rk]\n    error=0' if dimension==2 else '    spacing=[dx,1._rk,1._rk]\n    error=0'))
+        source=source[:start]+part+source[end:]
+    if dimension==2:
+        start=source.index('  subroutine reconstruct(')
+        end=source.index('  end subroutine',start)
+        part=source[start:end].replace('    error=0','    e=0; e(d)=1\n    error=0')
         source=source[:start]+part+source[end:]
     resident={'flatten':'state,flat','reconstruct':'state,flat,minus,plus',
               'faces':'state,minus,plus,flux','update':'reference,state,flux,integrated',
@@ -83,7 +92,7 @@ def generate(output):
     for name,arrays in resident.items():
         start=source.index('  subroutine '+name+'(')
         end=source.index('  end subroutine',start)
-        part=source[start:end].replace('collapse(2)', 'collapse(2) map(alloc:'+arrays+')')
+        part=source[start:end].replace('collapse('+str(dimension+1)+') &', 'collapse('+str(dimension+1)+') map(alloc:'+arrays+') &')
         source=source[:start]+part+source[end:]
     start=source.index('  subroutine timestep_rate(')
     part=source[start:].replace('    error=0', '    error=0; rate=0._rk').replace('reduction(max:error)', 'reduction(max:error,rate)')
@@ -95,10 +104,13 @@ def generate(output):
     types=m.MacroExpander(m.load_macros([REF/'hydro_layout.ini'])).expand_text(types)
     (output/'hydro_types.f90').write_text(types+'\nend module\n')
     for name in ['periodic_batch.F90','Makefile']:
-        (output/name).write_text(m.wrap_fortran((ROOT/name).read_text()) if name.endswith('.F90') else (ROOT/name).read_text())
+        (output/name).write_text(m.wrap_fortran((ROOT/('periodic_batch_2d.F90' if dimension==2 else name)).read_text()) if name.endswith('.F90') else (ROOT/name).read_text())
     print(output)
 
 if __name__ == '__main__':
     parser=argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--output',type=Path,default=ROOT/'build')
-    generate(parser.parse_args().output.resolve())
+    parser.add_argument('--output',type=Path)
+    parser.add_argument('--dimension',type=int,choices=[1,2],default=1)
+    args=parser.parse_args()
+    output=args.output or ROOT/('build2d' if args.dimension==2 else 'build')
+    generate(output.resolve(),args.dimension)
