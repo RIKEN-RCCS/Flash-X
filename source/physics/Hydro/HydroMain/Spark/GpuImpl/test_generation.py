@@ -4,6 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 import generate as g
+from benchmark import parse
 
 class GenerationTests(unittest.TestCase):
     def test_direct_binding_preserves_scope_and_precedence(self):
@@ -16,6 +17,16 @@ class GenerationTests(unittest.TestCase):
         self.assertIn("'a' ! a",text)
         self.assertIn('macro_scope_1_local_scratch',text)
         self.assertNotIn('associate',text)
+
+    def test_benchmark_output_parser(self):
+        text=('initial_device= 0 target_devices= 1\n'
+              'resident stepping seconds= 1.25D-01\n'
+              'including transfer seconds= 1.30E-01\nsteps,time= 100 0.01\n')
+        self.assertEqual(parse(text),(100,0.125,0.13))
+        with self.assertRaises(ValueError):
+            parse(text.replace('initial_device= 0','initial_device= 1'))
+        with self.assertRaises(ValueError):
+            parse('incomplete output')
 
     def test_complete_sources_have_no_argument_descriptors(self):
         with tempfile.TemporaryDirectory() as directory:

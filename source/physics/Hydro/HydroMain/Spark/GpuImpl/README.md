@@ -115,3 +115,71 @@ This command requests line information without combining it with device debug
 information from `-g`. Removing descriptor association addresses the reported
 compilation barrier; a successful device run and sanitizer report are still
 needed to establish whether the earlier illegal address is resolved.
+
+## Optimized performance campaign on RIKYU
+
+From GpuImpl, generate and build with the loaded NVHPC module:
+
+```sh
+python3 generate.py
+cd build
+make nvidia > build-opt.log 2>&1
+cd ..
+```
+
+`make nvidia` always rebuilds `periodic_batch_opt` using `-O3 -mp=gpu`.
+Supply `GPU_FLAGS` for site-specific architecture selection if required.
+Keep build-opt.log with the measurements; the runner cannot reconstruct compiler
+flags from an executable. No fast-math switches are added. Before timing, rerun
+256 cells/4 blocks to t=0.05 with the optimized executable and compare its CSV to
+the SSPRK3 NewImpl reference. Also compare its one-block output.
+
+Run within an allocated GPU compute node, without Compute Sanitizer/profilers:
+
+```sh
+python3 benchmark.py --exe build/periodic_batch_opt
+```
+
+Defaults sweep 4096, 16384, and 65536 total cells with 1, 16, and 64 blocks,
+100 timesteps, and 5 independent process repetitions per configuration. For a
+short initial campaign:
+
+```sh
+python3 benchmark.py --cells 4096 --blocks 1 16 64 --steps 100 --repeats 3
+```
+
+The optional fifth solver argument is a maximum step count (0, the default,
+means no step cap). The runner passes final time 1.0 and requires the requested
+step count to complete before that time cap. Fixed step counts avoid the
+quadratic increase in work that occurs when both resolution and the number of
+CFL-limited steps grow in a fixed-physical-time sweep. These benchmark CSVs are
+not necessarily at t=0.05 and must not be compared to the earlier reference
+without matching their achieved time.
+
+Campaign directories retain every profile/log, raw timings.csv and metadata.json
+with GPU/compiler output and relevant environment. Only successful device runs
+are accepted. The solver's conservation assertion remains enabled. Summary values
+are median/min/max resident seconds per step. Cell updates/s counts full SSPRK3
+timesteps, not individual stages and not guard-cell operations. These are
+independent process repetitions, not an in-process warmup protocol.
+
+At fixed total cells, changing block count measures decomposition and guard-work
+effects. Increasing total cells measures workload scaling; it does not isolate
+batch count because the block extent changes too. Compare cases with a fixed
+cells-per-block ratio separately when studying batch growth. Start with the
+small campaign; increase steps if durations are too short for stable timing.
+
+Resident timing includes host orchestration, synchronous kernel launches,
+reductions and stage execution, but excludes initial mapping and final solution
+copy-back. Transfer-inclusive timing also includes those data-region operations
+and the resident-time print. Both exclude program initialization, initial GPU
+probe/context setup, final CSV writing and final conservation checks. Neither is
+full process wall time or an isolated GPU kernel measurement.
+
+The current NewImpl executable has no comparable internal timer. Do not report a
+CPU/GPU speedup by comparing its full process wall time with GPU resident time.
+For an initial controlled CPU comparison, the same optimized batch executable
+can be run manually with OMP_TARGET_OFFLOAD=DISABLED and GPU_ALLOW_HOST=1;
+record OMP_NUM_THREADS and CPU affinity. The campaign runner intentionally
+rejects host execution. A comparison against the original Flash-X performance
+requires its own matched numerical configuration and timing boundaries.

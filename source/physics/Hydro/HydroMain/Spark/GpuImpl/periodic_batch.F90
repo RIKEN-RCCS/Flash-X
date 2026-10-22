@@ -7,10 +7,10 @@ program periodic_batch
   real(rk),allocatable::state(:,:,:),reference(:,:,:),minus(:,:,:),plus(:,:,:),flux(:,:,:),integrated(:,:,:),flat(:,:),sound(:,:)
   real(rk)::dx,dt,time,finish,rate,speed,a,mp,ms,dv,pg,marker,rho,p,ei,x
   real(rk)::coeff(3,3),weights(3),mass,energy,momentum,t0,t1,imbalance
-  integer::status
+  integer::status,stepLimit
   type(hydro_parameters)::params
   character(256)::arg,path
-  ncells=256; nb=4; finish=0.05_rk; path='gpu_sod.csv'
+  ncells=256; nb=4; finish=0.05_rk; path='gpu_sod.csv'; stepLimit=0
   call get_command_argument(1,arg)
   if(len_trim(arg)>0) read(arg,*) ncells
   call get_command_argument(2,arg)
@@ -19,6 +19,10 @@ program periodic_batch
   if(len_trim(arg)>0) read(arg,*) finish
   call get_command_argument(4,arg)
   if(len_trim(arg)>0) path=arg
+  ! Optional fixed-step cap permits throughput sweeps without resolution-dependent run length.
+  call get_command_argument(5,arg)
+  if(len_trim(arg)>0) read(arg,*) stepLimit
+  if(stepLimit<0) stop 1
   if(nb<1.or.ncells<8.or.finish<=0) stop 1
   if(mod(ncells,nb)/=0) stop 1
   n=ncells/nb; dx=1._rk/ncells
@@ -58,6 +62,7 @@ program periodic_batch
   !$omp target data map(tofrom:state) map(alloc:reference,minus,plus,flux,integrated,flat,sound)
   t1=omp_get_wtime()
   do while(time<finish)
+    if(stepLimit>0.and.step>=stepLimit) exit
     call guards()
     call shocks()
     call timestep_rate(state,n,nb,dx,rate,error)
