@@ -48,7 +48,9 @@ PP      = -D
 #  (ex. FFLAGS) to the proper set of flags (ex. FFLAGS_OPT).
 #----------------------------------------------------------------------------
 
-FFLAGS_OPT = -c -O2 -fdefault-real-8 -fdefault-double-8 -Wuninitialized -DHAVE_MPI_MODULE -fallow-argument-mismatch
+FFLAGS_OPT = -c -O3 -fopenmp -ffree-line-length-none \
+             -fdefault-real-8 -fdefault-double-8 \
+             -DHAVE_MPI_MODULE -fallow-argument-mismatch
 FFLAGS_DEBUG = -ggdb -c  -fdefault-real-8 -fdefault-double-8 \
 	-Wall -Wextra -Waliasing \
 	-Wsurprising -Wconversion -Wunderflow \
@@ -143,3 +145,10 @@ CD = cd
 RL = ranlib
 ECHO = echo
 
+
+# Explicit host-only OpenMP library for gpuAmrCpuTest=True.
+# Keep separate from OMP_OL so production GPU setup cannot silently use CPU flags.
+FFLAGS_OMP_HOST = -fopenmp
+# mpicc invokes Apple Clang; the batch OpenMP code is entirely Fortran.
+CFLAGS_OMP_HOST =
+LIB_OMP_HOST = -fopenmp

@@ -17,6 +17,16 @@ def generate(output):
     face='@hy_assembleFaceStates'+face.split('\n          end do',1)[0]
     face=face.replace('work%minus','minus').replace('work%plus','plus').replace('data,','state,')
     face=face.replace('maxSpeed=max(maxSpeed,speed)','').replace('return','exit cell_work')
+    diagnostic_markers={
+        '@hy_assembleFaceStates':'FACE_STATES',
+        '@hy_estimateHydroWaveSpeeds':'WAVE_SPEEDS',
+        '@hy_selectHLLEFlux':'HLLE',
+        '@hy_computeHydroContact':'CONTACT',
+        '@hy_computeHydroStarState(ql':'LEFT_STAR',
+        '@hy_computeHydroStarState(qr':'RIGHT_STAR',
+    }
+    for token,label in diagnostic_markers.items():
+        face=face.replace(token,'! DIAGNOSTIC_'+label+'\n            '+token)
     source=m.lower_blocks(m.MacroExpander(m.load_macros(defs)).expand_text(source.replace('! INSERT_REFERENCE_FACE_BODY',face)))
     def private(match):
         decl=match[1]; names=[]
@@ -35,6 +45,28 @@ def generate(output):
         if name=='update': init+='    spacing=[dx,dy,dz]\n'
         part=part.replace('    error=0',init+'    error=0').replace('collapse(4) &','collapse(4) map(alloc:'+arrays+') &')
         source=source[:start]+part+source[end:]
+    # Replay the identical expanded face algebra serially on the host only after
+    # a device failure. Successful execution pays no extra transfers or launches.
+    start=source.index('  subroutine faces('); end=source.index('  end subroutine',start)+len('  end subroutine')
+    diagnostic=source[start:end].replace('subroutine faces(', 'subroutine diagnose_faces(',1)
+    diagnostic='\n'.join(line for line in diagnostic.splitlines() if not line.lstrip().startswith('!$omp'))
+    diagnostic=diagnostic.replace('    logical::vacuum,inShock',
+        '    logical::vacuum,inShock\n    character(32)::diagnosticPoint')
+    diagnostic=diagnostic.replace('status=HY_OK\n        cell_work',
+        "status=HY_OK; sl=0; sr=0; contact=0; pstar=0; ql=0; qr=0\n        diagnosticPoint='face states'\n        cell_work")
+    for label in diagnostic_markers.values():
+        diagnostic=diagnostic.replace('! DIAGNOSTIC_'+label, "diagnosticPoint='"+label+"'")
+    diagnostic=diagnostic.replace('        error=max(error,status)', """        if(status/=HY_OK) then
+          error=status
+          print *, 'HY_GPU_AMR first failing face: batch slot,i,j,k,d=',block,i,j,k,d
+          print *, 'HY_GPU_AMR failing calculation=',trim(diagnosticPoint),' status=',status
+          print *, 'HY_GPU_AMR qL [rho,ux,uy,uz,p,gamma,rhoE]=',ql
+          print *, 'HY_GPU_AMR qR [rho,ux,uy,uz,p,gamma,rhoE]=',qr
+          print *, 'HY_GPU_AMR SL,SR,contact,Pstar=',sl,sr,contact,pstar
+          print *, 'HY_GPU_AMR SR-SL,SL-contact,SR-contact=',sr-sl,sl-contact,sr-contact
+          return
+        end if""")
+    source=source.replace('end module',diagnostic+'\nend module')
     assert not re.search(r'\bassociate\s*\(|macro_scope_\d+_arg_|@',source,re.I)
     (output/'hy_gpu_amr_kernels.F90').write_text(m.wrap_fortran(source))
     # Separate module name avoids colliding with existing NewImpl compatibility modules.

@@ -60,6 +60,8 @@ contains
     integer::capacity,count,nx,ny,nz,ng,lo(3),hi(3),lc(3),hc(3),i,j,k,v,b,ii,jj,kk,status,failedStage
     integer::stateMap(8),fluxMap(5),hostFlag,batchLevel
     logical::allocatedBatch
+    character(80)::failedOperation
+    character(256)::abortMessage
     if(.not.hy_telescoping.or.hy_fluxCorrectPerLevel.or.hy_geometry/=CARTESIAN.or.hy_threadWithinBlock) &
       call Driver_abort('HY_GPU_AMR requires Cartesian telescoping and ordinary flux correction')
     if(NGUARD<NSTENCIL+3) call Driver_abort('HY_GPU_AMR: insufficient telescoping guards')
@@ -71,7 +73,12 @@ contains
     !$omp target map(from:hostFlag)
     if(.not.omp_is_initial_device()) hostFlag=0
     !$omp end target
+#ifdef HY_GPU_AMR_CPU_TEST
+    if(hostFlag/=1) call Driver_abort('HY_GPU_AMR CPU test: set OMP_TARGET_OFFLOAD=DISABLED')
+    print *, 'HY_GPU_AMR: CPU testing mode; OpenMP target regions execute on host'
+#else
     if(hostFlag/=0) call Driver_abort('HY_GPU_AMR: target device unavailable')
+#endif
     params%flattening=hy_flattening; params%hybrid=hy_hybridRiemann
     params%viscosity=hy_cvisc; params%density_floor=hy_smalldens; params%pressure_floor=hy_smallpres
     params%tiny_state=hy_tiny; params%shock_marker_present=.false.
@@ -158,10 +165,16 @@ contains
       call hy_gpu_amr_advance(state(:,:,:,:,1:count),reference(:,:,:,:,1:count),minus(:,:,:,:,1:count), &
         plus(:,:,:,:,1:count),flat(:,:,:,1:count),flux(:,:,:,:,:,1:count),buffers(:,:,:,:,:,1:count), &
         nx,ny,nz,count,ng,NSTENCIL,batchSpacing(1),batchSpacing(2),batchSpacing(3),dt,coefficients,weights,params, &
-        hy_smallE,eos_gamma,eos_smalle,eos_eintSwitch,status,failedStage)
+        hy_smallE,eos_gamma,eos_smalle,eos_eintSwitch,status,failedStage,failedOperation)
       if(status/=HY_OK) then
         print *, 'HY_GPU_AMR failure: status,stage,level,batch count=',status,failedStage,batchLevel,count
-        call Driver_abort('HY_GPU_AMR: batch failed; solution not committed')
+        print *, 'HY_GPU_AMR input: nx,ny,nz,guards,stencil=',nx,ny,nz,ng,NSTENCIL
+        print *, 'HY_GPU_AMR input: spacing,dt,gamma,floors,switch=',batchSpacing,dt,eos_gamma, &
+          hy_smallE,eos_smalle,eos_eintSwitch
+        write(abortMessage,'(A,I0,A,I0,A,A,A,I0,A,I0)') &
+          'HY_GPU_AMR: status=',status,', stage=',failedStage,', operation=',trim(failedOperation), &
+          ', level=',batchLevel,', batch count=',count
+        call Driver_abort(trim(abortMessage))
       end if
       do q=1,count
         ll=tiles(q)%limits(LOW,:); hh=tiles(q)%limits(HIGH,:); lg=tiles(q)%blkLimitsGC(LOW,:)

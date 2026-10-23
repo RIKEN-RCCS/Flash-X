@@ -175,3 +175,131 @@ Increase batch size only after checking available device and host memory.
 Local tests perform source generation, setup-contract checks, and C preprocessing
 for NDIM=2/3 (with synthetic headers), including balanced-loop and z-flux output
 checks. These are not Fortran compilation or numerical/device validation.
+
+## CPU testing on ghosha (gfortran + MPI)
+
+For host correctness testing, add **both** variables to the same normal Spark
+AMR/Gamma setup command:
+
+```text
+gpuAmr=True gpuAmrCpuTest=True
+```
+
+Perform a fresh setup and rebuild. This still selects the AMR batch adapter and
+its generated numerical kernels. It defines HY_GPU_AMR_CPU_TEST and requests
+OMP_HOST instead of OMP_OL. The ghosha site makefile now supplies
+FFLAGS_OMP_HOST and LIB_OMP_HOST as `-fopenmp`. CFLAGS_OMP_HOST is empty
+because ghosha's mpicc invokes Apple Clang; the batch OpenMP kernels are Fortran.
+The MPI Fortran wrapper must invoke gfortran; inspect `mpif90 -show`.
+Other sites can use this mode after providing equivalent host OpenMP flags for
+their compiler. It does not request an OpenMP target/offload library.
+
+Run from the configured object directory with host execution explicitly selected:
+
+```sh
+export OMP_TARGET_OFFLOAD=DISABLED
+export OMP_NUM_THREADS=4
+mpirun -n 1 ./flashx
+```
+
+Adjust thread/rank counts to the laptop's resources. The adapter prints a CPU-test
+notice, accepts the initial device, and rejects accidental GPU execution in this
+mode. This exercises the batched telescoping/update/EOS/flux-return path on CPU;
+it does not validate GPU mappings or GPU performance. All normal AMR, geometry,
+EOS and RK restrictions still apply. No environment-variable bypass is added to
+the production configuration: without gpuAmrCpuTest=True the OMP_OL requirement
+and mandatory target-device check remain unchanged.
+
+The earlier request not to compile or run Flash-X locally is retained: local
+verification covers setup selection, source generation and preprocessing in
+both dimensions and both modes, not a compiled application run.
+
+## Riemann failure diagnostics
+
+HY_DEGENERATE (status 3) means the selected Riemann algebra encountered an
+exactly zero denominator. On a face-kernel failure, the driver copies the current
+stage/reconstruction arrays to the host and serially replays the same expanded
+face calculation. It prints the first reproduced failing batch slot/cell/direction,
+calculation name, repaired reconstructed left/right states, wave speeds, contact
+speed and star pressure. These failure-only transfers do not occur on successful
+steps. Capture standard output as well as the Flash-X log when reporting failures.
+No HLLE fallback or arithmetic modification has been introduced. Host replay can
+fail to reproduce an accelerator-only/compiler-dependent issue; this is explicitly
+reported, rather than treating the replay as a successful timestep.
+
+## HDF5-independent cell verification dumps
+
+Optional rank-local CSV output is now available after the entire Hydro advance
+and CPU reflux/correction-EOS pass. Regenerate setup and rebuild to register the
+new runtime parameters and dump module. It is enabled for this AMR backend in
+both CPU-testing and GPU builds, and requires no HDF5 calls or libraries itself.
+
+For the fixed-level comparison, use the same problem, block dimensions, gamma,
+CFL=0.4, precision and refinement level on both machines. For example:
+
+```text
+lrefine_min = 4
+lrefine_max = 4
+hy_gpuDumpInterval = 10
+hy_gpuDumpPrefix = "laptop_verify"
+```
+
+Set the prefix to `rikyu_verify` for the GPU run. The level above is an example;
+choose one that fits both machines. Interval zero (the default) disables all
+dumps. A positive interval writes whenever the current Driver_getNStep index is
+divisible by the interval. Each snapshot contains the post-Hydro state at the
+passed timeEndAdv and dt; it is not an initial-condition dump or a complete
+checkpoint. Example filenames are:
+
+```text
+laptop_verify_step0000000010_rank000000.csv
+laptop_verify_step0000000010_rank000001.csv
+```
+
+Only owned leaf interiors are written, excluding guards and covered parents.
+Columns include driver step/time/dt, refinement level, Grid i/j/k indices,
+physical cell centers, widths, density, three velocities, pressure, and specific
+internal/total energies. The inactive z coordinate is zero and dz is one in 2D
+(unit depth). The console reports rank-local mass/momenta/energy; the comparison
+script computes corresponding global totals by combining all rank files.
+These are solution dumps, not flux-buffer dumps. Fixed-level tests do not exercise
+coarse-fine reflux interfaces.
+
+Files at the same prefix/step/rank path are replaced; other steps remain. Prefixes
+may include a directory, but it must already exist on every rank. Disable output
+when measuring performance, since dumping is included in the Hydro timer.
+
+Copy the snapshots to one machine and compare exactly one step at a time:
+
+```sh
+python3 source/physics/Hydro/HydroMain/Spark/GpuImpl/AMR/compare_dumps.py \
+  --reference 'cpu/laptop_verify_step0000000010_rank*.csv' \
+  --candidate 'gpu/rikyu_verify_step0000000010_rank*.csv' \
+  --report comparison-step10.json
+```
+
+Quoted patterns are expanded by the script. It matches records by refinement
+level and rounded physical coordinates, independent of rank/file order and local
+Grid indices. Defaults are 12 coordinate decimal places, cell-value absolute
+tolerance 1e-10 and relative tolerance 1e-8. A cell quantity passes when its absolute
+difference is at most atol+rtol*max(abs(reference),abs(candidate)). Time and dt must
+agree within 1e-12 and step indices must match. Widths are also checked.
+
+The JSON report includes maximum absolute differences by field, failed-cell
+counts, global reference/candidate conserved totals and their differences.
+Global total differences are reported, not independently thresholded. Missing
+cells, coordinate-key collisions, mixed snapshots, invalid data or failed cell
+tolerances produce a nonzero exit status. Use --coordinate-digits only when
+appropriate for the domain scale/finest spacing. Use --time-atol/--atol/--rtol
+with a numerical justification, not to hide a different timestep history or mesh.
+The script accepts different MPI rank counts if the physical cell set agrees.
+
+This output does not remove any separate HDF5 dependency selected by Flash-X's
+normal IO configuration. That must still be disabled/replaced in the RIKYU
+setup independently. These CSVs cannot be used to restart Flash-X.
+
+Synthetic comparison tests (no solver execution):
+
+```sh
+python3 source/physics/Hydro/HydroMain/Spark/GpuImpl/AMR/test_compare_dumps.py
+```

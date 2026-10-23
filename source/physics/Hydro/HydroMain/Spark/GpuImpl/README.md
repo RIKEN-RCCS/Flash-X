@@ -285,3 +285,13 @@ same caution about process startup and timing boundaries as in the 1D campaign.
 Only source generation and Python comparison checks have been performed locally.
 RIKYU compilation, sanitizer checks and numerical validation remain required for
 this 2D extension.
+
+## Macro definition file suffixes
+
+The standalone storage definitions are `gpu_layout.ini-template` and
+`gpu_layout_2d.ini-template`. They use NewImpl's custom macro syntax and are
+loaded explicitly by generate.py. The suffix is intentional: selecting the AMR
+unit also selects its GpuImpl parent, and Flash-X setup loads files ending in
+`.ini` from selected directories with its native section-based macro parser.
+Do not retain copies under the former `.ini` names in the source directory.
+The AMR backend follows the same convention with `amr_layout.ini-template`.

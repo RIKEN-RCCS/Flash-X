@@ -1,3 +1,6 @@
+# Flash-X setup concatenates ancestor Makefiles into Makefile.Hydro.
+# Standalone build rules must not override Flash-X flags or add executable targets.
+ifneq ($(FLASHBINARY),true)
 # Run generate.py first; execute this Makefile in its output directory.
 # Supply RIKYU's OpenMP target compiler AND its architecture/offload flags.
 FC = gfortran
@@ -17,3 +20,5 @@ nvidia:
 	$(NVFC) -O3 -mp=gpu -Minfo=mp $(GPU_FLAGS) $(SOURCES) -o periodic_batch_opt
 nvidia-debug:
 	$(NVFC) -O0 -mp=gpu -gpu=lineinfo -Minfo=mp $(GPU_FLAGS) $(SOURCES) -o periodic_batch_debug
+
+endif # standalone build only

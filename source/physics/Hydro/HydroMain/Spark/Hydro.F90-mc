@@ -33,6 +33,7 @@
 subroutine Hydro(timeEndAdv, dt, dtOld, sweepOrder)
 
 #ifdef HY_GPU_AMR
+   use hy_gpu_amr_dump_module, ONLY: hy_gpu_amr_dump
    use hy_gpu_amr_adapter, ONLY: hy_gpu_amr_hydro, hy_gpu_amr_check
 #endif
 
@@ -434,6 +435,11 @@ subroutine Hydro(timeEndAdv, dt, dtOld, sweepOrder)
       end do !loop over levels
 
    end if !Flux correct per Level
+
+#ifdef HY_GPU_AMR
+   ! Dump only after all CPU coarse-fine flux corrections and correction EOS calls.
+   call hy_gpu_amr_dump(timeEndAdv,dt)
+#endif
 
 ! Reset local maximum hyperbolic speed. This will be updated in Hydro_computeDt.
    hy_lChyp = TINY(1.0)

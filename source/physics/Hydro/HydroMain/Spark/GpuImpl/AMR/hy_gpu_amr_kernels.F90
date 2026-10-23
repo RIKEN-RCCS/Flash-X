@@ -207,6 +207,7 @@ integer :: macro_scope_41_local_v
       do i=lower(1),upper(1)+e(1)
         status=HY_OK
         cell_work: do
+          ! DIAGNOSTIC_FACE_STATES
 macro_scope_15: do
 do macro_scope_15_local_v=1,7
   ql(macro_scope_15_local_v)=plus(i-e(1),j-e(2),k-e(3),macro_scope_15_local_v,block)
@@ -227,6 +228,7 @@ qr(QRHO)=max(params%density_floor,qr(QRHO))
 qr(QP)=max(params%pressure_floor,qr(QP))
 exit macro_scope_19
 end do macro_scope_19
+            ! DIAGNOSTIC_WAVE_SPEEDS
 macro_scope_20: do
 status=HY_OK; vacuum=.false.; sl=0; sr=0; speed=0
 if (.not.all(ieee_is_finite(ql)) .or. .not.all(ieee_is_finite(qr))) then
@@ -286,6 +288,7 @@ exit macro_scope_25
 end do macro_scope_25
               end if
               if (inShock) then
+                ! DIAGNOSTIC_HLLE
 macro_scope_28: do
 status=HY_OK; f=0
 if (sl>0._rk) then
@@ -305,6 +308,7 @@ end do macro_scope_28
               else if (sr<0._rk) then
                 f=fr
               else
+                ! DIAGNOSTIC_CONTACT
 macro_scope_29: do
 status=HY_OK; contact=0; pstar=0
 macro_scope_29_local_unL=ql(QUX+d-1); macro_scope_29_local_unR=qr(QUX+d-1)
@@ -321,6 +325,7 @@ if (.not.ieee_is_finite(contact) .or. .not.ieee_is_finite(pstar)) status=HY_BAD_
 exit macro_scope_29
 end do macro_scope_29
                 if (status/=HY_OK) exit cell_work
+                ! DIAGNOSTIC_LEFT_STAR
 macro_scope_30: do
 status=HY_OK; usl=0
 macro_scope_30_local_un=ql(QUX+d-1); macro_scope_30_local_numer=sl-macro_scope_30_local_un; &
@@ -337,6 +342,7 @@ if (.not.all(ieee_is_finite(usl))) status=HY_BAD_STATE
 exit macro_scope_30
 end do macro_scope_30
                 if (status/=HY_OK) exit cell_work
+                ! DIAGNOSTIC_RIGHT_STAR
 macro_scope_31: do
 status=HY_OK; usr=0
 macro_scope_31_local_un=qr(QUX+d-1); macro_scope_31_local_numer=sr-macro_scope_31_local_un; &
@@ -518,5 +524,272 @@ end do macro_scope_60
       end do
       end do
     !$omp end target teams distribute parallel do
+  end subroutine
+  subroutine diagnose_faces(state,minus,plus,flux,nx,ny,nz,nb,ng,lower,upper,params,d,error)
+use, intrinsic :: ieee_arithmetic, only: ieee_is_finite
+    integer,intent(in)::nx,ny,nz,nb,ng,lower(3),upper(3),d
+    real(rk),intent(in)::state(1-ng:nx+ng,1-ng:ny+ng,1-(NDIM-2)*ng:nz+(NDIM-2)*ng,9,nb),minus(1-ng:nx+ng,1-ng:ny+ng, &
+  & 1-(NDIM-2)*ng:nz+(NDIM-2)*ng,7,nb),plus(1-ng:nx+ng,1-ng:ny+ng,1-(NDIM-2)*ng:nz+(NDIM-2)*ng,7,nb)
+    real(rk),intent(inout)::flux(1-ng:nx+ng+1,1-ng:ny+ng+1,1-(NDIM-2)*ng:nz+(NDIM-2)*ng+(NDIM-2),5,NDIM,nb)
+    type(hydro_parameters),intent(in)::params
+    integer,intent(out)::error
+    integer::inputMap(7),outputMap(5),shockVariable,e(3)
+    integer::i,block,j,k,status
+    real(rk)::ql(7),qr(7),ul(5),ur(5),fl(5),fr(5),usl(5),usr(5),f(5),sl,sr,speed,contact,pstar
+    logical::vacuum,inShock
+    character(32)::diagnosticPoint
+integer :: macro_scope_15_local_v
+real(rk) :: macro_scope_20_local_al2,macro_scope_20_local_ar2
+real(rk) :: macro_scope_23_local_un
+real(rk) :: macro_scope_24_local_un
+real(rk) :: macro_scope_29_local_unL,macro_scope_29_local_unR,macro_scope_29_local_leftMass, &
+  & macro_scope_29_local_rightMass,macro_scope_29_local_denom
+real(rk) :: macro_scope_30_local_numer,macro_scope_30_local_denom,macro_scope_30_local_un
+real(rk) :: macro_scope_31_local_numer,macro_scope_31_local_denom,macro_scope_31_local_un
+real(rk) :: macro_scope_33_local_ql(7),macro_scope_33_local_qr(7),macro_scope_33_local_ul(5),macro_scope_33_local_ur( &
+  & 5),macro_scope_33_local_nu
+integer :: macro_scope_34_local_v
+integer :: macro_scope_36_local_v
+integer :: macro_scope_41_local_v
+
+    e=0; e(d)=1
+    inputMap=primitiveMap; outputMap=conservedMap; shockVariable=9
+    error=0
+    do block=1,nb
+      do k=lower(3),upper(3)+e(3)
+      do j=lower(2),upper(2)+e(2)
+      do i=lower(1),upper(1)+e(1)
+        status=HY_OK; sl=0; sr=0; contact=0; pstar=0; ql=0; qr=0
+        diagnosticPoint='face states'
+        cell_work: do
+          diagnosticPoint='FACE_STATES'
+macro_scope_15: do
+do macro_scope_15_local_v=1,7
+  ql(macro_scope_15_local_v)=plus(i-e(1),j-e(2),k-e(3),macro_scope_15_local_v,block)
+  qr(macro_scope_15_local_v)=minus(i,j,k,macro_scope_15_local_v,block)
+end do
+exit macro_scope_15
+end do macro_scope_15
+            if (.not.all(ieee_is_finite(ql)) .or. .not.all(ieee_is_finite(qr))) then
+              status=HY_BAD_STATE; exit cell_work
+            end if
+macro_scope_18: do
+ql(QRHO)=max(params%density_floor,ql(QRHO))
+ql(QP)=max(params%pressure_floor,ql(QP))
+exit macro_scope_18
+end do macro_scope_18
+macro_scope_19: do
+qr(QRHO)=max(params%density_floor,qr(QRHO))
+qr(QP)=max(params%pressure_floor,qr(QP))
+exit macro_scope_19
+end do macro_scope_19
+            diagnosticPoint='WAVE_SPEEDS'
+macro_scope_20: do
+status=HY_OK; vacuum=.false.; sl=0; sr=0; speed=0
+if (.not.all(ieee_is_finite(ql)) .or. .not.all(ieee_is_finite(qr))) then
+  status=HY_BAD_STATE; exit macro_scope_20
+end if
+if (min(ql(QRHO),qr(QRHO),ql(QP),qr(QP))<=0._rk) then
+  status=HY_BAD_STATE; exit macro_scope_20
+end if
+vacuum=min(ql(QRHO),qr(QRHO),ql(QP),qr(QP))<params%tiny_state
+if (vacuum) exit macro_scope_20
+macro_scope_20_local_al2=ql(QGAMMA)*ql(QP)/ql(QRHO); macro_scope_20_local_ar2=qr(QGAMMA)*qr(QP)/qr(QRHO)
+if (.not.ieee_is_finite(macro_scope_20_local_al2) .or. .not.ieee_is_finite(macro_scope_20_local_ar2)) then
+  status=HY_BAD_STATE; exit macro_scope_20
+end if
+if (min(macro_scope_20_local_al2,macro_scope_20_local_ar2)<0._rk) then
+  status=HY_BAD_STATE; exit macro_scope_20
+end if
+sl=min(ql(QUX+d-1)-sqrt(macro_scope_20_local_al2),qr(QUX+d-1)-sqrt(macro_scope_20_local_ar2))
+sr=max(ql(QUX+d-1)+sqrt(macro_scope_20_local_al2),qr(QUX+d-1)+sqrt(macro_scope_20_local_ar2))
+speed=max(abs(sl),abs(sr))
+exit macro_scope_20
+end do macro_scope_20
+            if (status/=HY_OK) exit cell_work
+            
+            f=0
+            if (.not.vacuum) then
+macro_scope_21: do
+ul(URHO)=ql(QRHO); ul(UMX:UMZ)=ql(QRHO)*ql(QUX:QUZ)
+ul(UENER)=0.5_rk*ql(QRHO)*sum(ql(QUX:QUZ)**2)+ql(QEINT)
+exit macro_scope_21
+end do macro_scope_21
+macro_scope_22: do
+ur(URHO)=qr(QRHO); ur(UMX:UMZ)=qr(QRHO)*qr(QUX:QUZ)
+ur(UENER)=0.5_rk*qr(QRHO)*sum(qr(QUX:QUZ)**2)+qr(QEINT)
+exit macro_scope_22
+end do macro_scope_22
+macro_scope_23: do
+macro_scope_23_local_un=ql(QUX+d-1)
+fl=ul*macro_scope_23_local_un
+fl(UMX+d-1)=fl(UMX+d-1)+ql(QP)
+fl(UENER)=(ul(UENER)+ql(QP))*macro_scope_23_local_un
+exit macro_scope_23
+end do macro_scope_23
+macro_scope_24: do
+macro_scope_24_local_un=qr(QUX+d-1)
+fr=ur*macro_scope_24_local_un
+fr(UMX+d-1)=fr(UMX+d-1)+qr(QP)
+fr(UENER)=(ur(UENER)+qr(QP))*macro_scope_24_local_un
+exit macro_scope_24
+end do macro_scope_24
+              inShock=.false.
+              if (params%hybrid .and. params%shock_marker_present) then
+macro_scope_25: do
+inShock=(state(i,j,k,shockVariable,block)/=0._rk .or. &
+state(i-e(1),j-e(2),k-e(3),shockVariable,block)/=0._rk)
+exit macro_scope_25
+end do macro_scope_25
+              end if
+              if (inShock) then
+                diagnosticPoint='HLLE'
+macro_scope_28: do
+status=HY_OK; f=0
+if (sl>0._rk) then
+  f=fl
+else if (sr<0._rk) then
+  f=fr
+else if (sr==sl) then
+  status=HY_DEGENERATE
+else
+  f=(sr*fl-sl*fr+sr*sl*(ur-ul))/(sr-sl)
+end if
+exit macro_scope_28
+end do macro_scope_28
+                if (status/=HY_OK) exit cell_work
+              else if (sl>=0._rk) then
+                f=fl
+              else if (sr<0._rk) then
+                f=fr
+              else
+                diagnosticPoint='CONTACT'
+macro_scope_29: do
+status=HY_OK; contact=0; pstar=0
+macro_scope_29_local_unL=ql(QUX+d-1); macro_scope_29_local_unR=qr(QUX+d-1)
+macro_scope_29_local_leftMass=ql(QRHO)*(sl-macro_scope_29_local_unL); macro_scope_29_local_rightMass=qr(QRHO)*( &
+  & sr-macro_scope_29_local_unR)
+macro_scope_29_local_denom=macro_scope_29_local_rightMass-macro_scope_29_local_leftMass
+if (macro_scope_29_local_denom==0._rk) then
+  status=HY_DEGENERATE; exit macro_scope_29
+end if
+contact=(macro_scope_29_local_rightMass*macro_scope_29_local_unR-macro_scope_29_local_leftMass &
+  & *macro_scope_29_local_unL+ql(QP)-qr(QP))/macro_scope_29_local_denom
+pstar=macro_scope_29_local_leftMass*(contact-macro_scope_29_local_unL)+ql(QP)
+if (.not.ieee_is_finite(contact) .or. .not.ieee_is_finite(pstar)) status=HY_BAD_STATE
+exit macro_scope_29
+end do macro_scope_29
+                if (status/=HY_OK) exit cell_work
+                diagnosticPoint='LEFT_STAR'
+macro_scope_30: do
+status=HY_OK; usl=0
+macro_scope_30_local_un=ql(QUX+d-1); macro_scope_30_local_numer=sl-macro_scope_30_local_un; &
+  & macro_scope_30_local_denom=sl-contact
+if (macro_scope_30_local_denom==0._rk) then
+  status=HY_DEGENERATE; exit macro_scope_30
+end if
+usl(URHO)=ql(QRHO)*macro_scope_30_local_numer/macro_scope_30_local_denom
+usl(UMX:UMZ)=ul(UMX:UMZ)*macro_scope_30_local_numer/macro_scope_30_local_denom
+usl(UMX+d-1)=usl(URHO)*contact
+usl(UENER)=(ul(UENER)*macro_scope_30_local_numer+pstar*contact-ql(QP)*macro_scope_30_local_un) &
+  & /macro_scope_30_local_denom
+if (.not.all(ieee_is_finite(usl))) status=HY_BAD_STATE
+exit macro_scope_30
+end do macro_scope_30
+                if (status/=HY_OK) exit cell_work
+                diagnosticPoint='RIGHT_STAR'
+macro_scope_31: do
+status=HY_OK; usr=0
+macro_scope_31_local_un=qr(QUX+d-1); macro_scope_31_local_numer=sr-macro_scope_31_local_un; &
+  & macro_scope_31_local_denom=sr-contact
+if (macro_scope_31_local_denom==0._rk) then
+  status=HY_DEGENERATE; exit macro_scope_31
+end if
+usr(URHO)=qr(QRHO)*macro_scope_31_local_numer/macro_scope_31_local_denom
+usr(UMX:UMZ)=ur(UMX:UMZ)*macro_scope_31_local_numer/macro_scope_31_local_denom
+usr(UMX+d-1)=usr(URHO)*contact
+usr(UENER)=(ur(UENER)*macro_scope_31_local_numer+pstar*contact-qr(QP)*macro_scope_31_local_un) &
+  & /macro_scope_31_local_denom
+if (.not.all(ieee_is_finite(usr))) status=HY_BAD_STATE
+exit macro_scope_31
+end do macro_scope_31
+                if (status/=HY_OK) exit cell_work
+macro_scope_32: do
+if (sl>=0._rk) then
+  f=fl
+else if (contact>=0._rk) then
+  f=fl+sl*(usl-ul)
+else if (sr>=0._rk) then
+  f=fr+sr*(usr-ur)
+else
+  f=fr
+end if
+exit macro_scope_32
+end do macro_scope_32
+              end if
+            end if
+macro_scope_33: do
+if (params%viscosity==0._rk) exit macro_scope_33
+macro_scope_34: do
+do macro_scope_34_local_v=1,7
+  macro_scope_33_local_ql(macro_scope_34_local_v)=state((i-e(1)),(j-e(2)),(k-e(3)),inputMap(macro_scope_34_local_v), &
+  & block)
+end do
+macro_scope_33_local_ql(QEINT)=macro_scope_33_local_ql(QRHO)*macro_scope_33_local_ql(QEINT)
+exit macro_scope_34
+end do macro_scope_34
+macro_scope_36: do
+do macro_scope_36_local_v=1,7
+  macro_scope_33_local_qr(macro_scope_36_local_v)=state(i,j,k,inputMap(macro_scope_36_local_v),block)
+end do
+macro_scope_33_local_qr(QEINT)=macro_scope_33_local_qr(QRHO)*macro_scope_33_local_qr(QEINT)
+exit macro_scope_36
+end do macro_scope_36
+macro_scope_38: do
+macro_scope_33_local_nu=params%viscosity*max(macro_scope_33_local_ql(QUX+d-1)-macro_scope_33_local_qr(QUX+d-1),0._rk)
+exit macro_scope_38
+end do macro_scope_38
+macro_scope_39: do
+macro_scope_33_local_ul(URHO)=macro_scope_33_local_ql(QRHO); macro_scope_33_local_ul(UMX:UMZ)=macro_scope_33_local_ql( &
+  & QRHO)*macro_scope_33_local_ql(QUX:QUZ)
+macro_scope_33_local_ul(UENER)=0.5_rk*macro_scope_33_local_ql(QRHO)*sum(macro_scope_33_local_ql(QUX:QUZ)**2) &
+  & +macro_scope_33_local_ql(QEINT)
+exit macro_scope_39
+end do macro_scope_39
+macro_scope_40: do
+macro_scope_33_local_ur(URHO)=macro_scope_33_local_qr(QRHO); macro_scope_33_local_ur(UMX:UMZ)=macro_scope_33_local_qr( &
+  & QRHO)*macro_scope_33_local_qr(QUX:QUZ)
+macro_scope_33_local_ur(UENER)=0.5_rk*macro_scope_33_local_qr(QRHO)*sum(macro_scope_33_local_qr(QUX:QUZ)**2) &
+  & +macro_scope_33_local_qr(QEINT)
+exit macro_scope_40
+end do macro_scope_40
+f=f+macro_scope_33_local_nu*(macro_scope_33_local_ul-macro_scope_33_local_ur)
+exit macro_scope_33
+end do macro_scope_33
+            if (.not.all(ieee_is_finite(f))) then
+              status=HY_BAD_STATE; exit cell_work
+            end if
+macro_scope_41: do
+do macro_scope_41_local_v=1,5
+  flux(i,j,k,outputMap(macro_scope_41_local_v),d,block)=f(macro_scope_41_local_v)
+end do
+exit macro_scope_41
+end do macro_scope_41
+          exit cell_work
+        end do cell_work
+        if(status/=HY_OK) then
+          error=status
+          print *, 'HY_GPU_AMR first failing face: batch slot,i,j,k,d=',block,i,j,k,d
+          print *, 'HY_GPU_AMR failing calculation=',trim(diagnosticPoint),' status=',status
+          print *, 'HY_GPU_AMR qL [rho,ux,uy,uz,p,gamma,rhoE]=',ql
+          print *, 'HY_GPU_AMR qR [rho,ux,uy,uz,p,gamma,rhoE]=',qr
+          print *, 'HY_GPU_AMR SL,SR,contact,Pstar=',sl,sr,contact,pstar
+          print *, 'HY_GPU_AMR SR-SL,SL-contact,SR-contact=',sr-sl,sl-contact,sr-contact
+          return
+        end if
+      end do
+    end do
+      end do
+      end do
   end subroutine
 end module

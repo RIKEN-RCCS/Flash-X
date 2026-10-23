@@ -5,7 +5,7 @@ module hy_gpu_amr_advance_module
   implicit none
 contains
   subroutine hy_gpu_amr_advance(state,reference,minus,plus,flat,flux,buffers,nx,ny,nz,nb,ng,stencil, &
-      dx,dy,dz,dt,coefficients,weights,params,energyFloor,gamma,eosFloor,eintSwitch,status,failedStage)
+      dx,dy,dz,dt,coefficients,weights,params,energyFloor,gamma,eosFloor,eintSwitch,status,failedStage,failedOperation)
     integer,intent(in)::nx,ny,nz,nb,ng,stencil
     real(rk),intent(inout)::state(1-ng:nx+ng,1-ng:ny+ng,1-(NDIM-2)*ng:nz+(NDIM-2)*ng,9,nb)
     real(rk),intent(inout)::reference(1-ng:nx+ng,1-ng:ny+ng,1-(NDIM-2)*ng:nz+(NDIM-2)*ng,9,nb)
@@ -17,12 +17,16 @@ contains
     real(rk),intent(in)::dx,dy,dz,dt,coefficients(3,2),weights(2),energyFloor,gamma,eosFloor,eintSwitch
     type(hydro_parameters),intent(in)::params
     integer,intent(out)::status,failedStage
-    integer::stage,lower(3),upper(3),i,j,k,b,v,d,ex,ey,ez,error
+    character(*),intent(out)::failedOperation
+    integer::stage,lower(3),upper(3),i,j,k,b,v,d,ex,ey,ez,error,diagnosticError
     real(rk)::ekin,internal,candidate,wt
-    status=HY_BAD_INPUT; failedStage=0
+    status=HY_BAD_INPUT; failedStage=0; failedOperation='input dimensions/guard width'
     if(min(nx,ny,nz,nb)<1.or.stencil<3.or.ng<stencil+3) return
+    failedOperation='nonfinite input parameters'
     if(.not.all(ieee_is_finite([dx,dy,dz,dt,energyFloor,gamma,eosFloor,eintSwitch]))) return
+    failedOperation='input spacing/timestep/EOS parameter range'
     if(min(dx,dy,dz,dt)<=0.or.gamma<=1.or.min(energyFloor,eosFloor,eintSwitch)<0) return
+    failedOperation='nonfinite RK coefficients/weights'
     if(.not.all(ieee_is_finite(coefficients)).or..not.all(ieee_is_finite(weights))) return
     ! Owner has already allocated persistent device buffers for the maximum batch.
     !$omp target data map(alloc:state,reference,minus,plus,flat,flux,buffers)
@@ -45,18 +49,28 @@ contains
       lower=1; upper=[nx,ny,nz]
       lower(1:NDIM)=1-(2-stage)*stencil
       upper(1:NDIM)=upper(1:NDIM)+(2-stage)*stencil
+      failedOperation='flattening'
       call flatten(state,flat,nx,ny,nz,nb,ng,lower,upper,params,error)
       if(error/=HY_OK) then
         status=error; exit
       end if
       do d=1,NDIM
+        write(failedOperation,'(A,I0)') 'reconstruction direction ',d
         call reconstruct(state,flat,minus,plus,nx,ny,nz,nb,ng,lower,upper,params,d,error)
-        call faces(state,minus,plus,flux,nx,ny,nz,nb,ng,lower,upper,params,d,error)
         if(error/=HY_OK) exit
+        write(failedOperation,'(A,I0)') 'Riemann flux direction ',d
+        call faces(state,minus,plus,flux,nx,ny,nz,nb,ng,lower,upper,params,d,error)
+        if(error/=HY_OK) then
+          !$omp target update from(state,minus,plus)
+          call diagnose_faces(state,minus,plus,flux,nx,ny,nz,nb,ng,lower,upper,params,d,diagnosticError)
+          if(diagnosticError==HY_OK) print *, 'HY_GPU_AMR: face failure did not reproduce in host replay'
+          exit
+        end if
       end do
       if(error/=HY_OK) then
         status=error; exit
       end if
+      failedOperation='solution update'
       call update(reference,state,flux,nx,ny,nz,nb,ng,lower,upper,dx,dy,dz,dt, &
                   coefficients(:,stage),params%density_floor,energyFloor,error)
       if(error/=HY_OK) then
@@ -86,6 +100,7 @@ contains
       end do
       ! MODE_DENS_EI preprocessing/postprocessing from Eos.ini, then gamma-law p.
       ! Temperature/GAME/entropy are restored by the host EOS after unpacking.
+      failedOperation='gamma-law EOS recovery'
       error=HY_OK
       !$omp target teams distribute parallel do collapse(4) private(ekin,internal,candidate) reduction(max:error)
       do b=1,nb
@@ -112,7 +127,7 @@ contains
     end do
     if(status==HY_OK) then
       !$omp target update from(state,buffers)
-      failedStage=0
+      failedStage=0; failedOperation='none'
     end if
     !$omp end target data
   end subroutine

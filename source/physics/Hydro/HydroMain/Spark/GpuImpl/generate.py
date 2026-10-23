@@ -41,7 +41,7 @@ def generate(output, dimension=1):
         raise ValueError("dimension must be 1 or 2")
     output.mkdir(parents=True, exist_ok=True)
     definitions = [REF/'hydro_layout.ini', REF/'hydro_helpers.ini',
-                   REF/'update_helpers.ini', REF/'diagnostic_helpers.ini', REF/'driver_helpers.ini', ROOT/('gpu_layout_2d.ini' if dimension==2 else 'gpu_layout.ini')]
+                   REF/'update_helpers.ini', REF/'diagnostic_helpers.ini', REF/'driver_helpers.ini', ROOT/('gpu_layout_2d.ini-template' if dimension==2 else 'gpu_layout.ini-template')]
     exp = m.MacroExpander(m.load_macros(definitions))
     source = (ROOT/('batch_kernels_2d.F90-mc' if dimension==2 else 'batch_kernels.F90-mc')).read_text()
     # Reuse the reference face algebra verbatim, excluding traversal/reduction/reporting.
