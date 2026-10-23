@@ -20,3 +20,8 @@ D hy_gpuDumpInterval Dump owned cells after Hydro correction every N driver step
 PARAMETER hy_gpuDumpInterval INTEGER 0
 D hy_gpuDumpPrefix Prefix (optionally with an existing directory) for rank-local verification CSV files.
 PARAMETER hy_gpuDumpPrefix STRING "amr_verify"
+
+D hy_gpuTimingInterval Write rank-local batch timings every N steps; zero disables CSV output.
+PARAMETER hy_gpuTimingInterval INTEGER 0
+D hy_gpuTimingPrefix Prefix for per-step rank-local timing CSV files.
+PARAMETER hy_gpuTimingPrefix STRING "amr_timing"

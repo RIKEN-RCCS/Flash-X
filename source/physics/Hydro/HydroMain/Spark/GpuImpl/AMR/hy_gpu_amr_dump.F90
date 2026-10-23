@@ -55,7 +55,7 @@ contains
             totals(2:4)=totals(2:4)+volume*rho*[u(VELX_VAR,i,j,k),u(VELY_VAR,i,j,k),u(VELZ_VAR,i,j,k)]
             totals(5)=totals(5)+volume*rho*u(ENER_VAR,i,j,k)
             cells=cells+1
-            write(unit,'(I0,2(",",ES26.17),4(",",I0),13(",",ES26.17))',iostat=ios) &
+            write(unit,'(I0,2(",",ES26.17E3),4(",",I0),13(",",ES26.17E3))',iostat=ios) &
               step,time,dt,tile%level,i,j,k,position,spacing,rho,u(VELX_VAR,i,j,k),u(VELY_VAR,i,j,k), &
               u(VELZ_VAR,i,j,k),u(PRES_VAR,i,j,k),u(EINT_VAR,i,j,k),u(ENER_VAR,i,j,k)
             if(ios/=0) call Driver_abort('HY_GPU_AMR: error writing verification dump')

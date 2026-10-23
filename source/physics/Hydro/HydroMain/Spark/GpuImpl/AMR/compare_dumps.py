@@ -5,11 +5,21 @@ import csv
 import glob
 import json
 import math
+import re
 from pathlib import Path
 
 FIELDS=['step','time','dt','level','i','j','k','x','y','z','dx','dy','dz',
         'density','velocity_x','velocity_y','velocity_z','pressure','internal_energy','total_energy']
 QUANTITIES=FIELDS[13:]
+
+def parse_real(value):
+    """Read E/D notation and legacy Fortran fields with an omitted exponent letter."""
+    value=value.strip().replace('D','E').replace('d','e')
+    # ES formats without an explicit exponent width may write 1.234-146.
+    match=re.fullmatch(r'([+-]?(?:\d+(?:\.\d*)?|\.\d+))([+-]\d{3,})',value)
+    if match:
+        value=match[1]+'E'+match[2]
+    return float(value)
 
 def load(patterns,digits=12):
     files=sorted({name for pattern in patterns for name in glob.glob(str(pattern))})
@@ -22,7 +32,7 @@ def load(patterns,digits=12):
             if reader.fieldnames!=FIELDS:
                 raise ValueError('Unexpected header: '+name)
             for record in reader:
-                row={key:float(value.replace('D','E').replace('d','e')) for key,value in record.items()}
+                row={key:parse_real(value) for key,value in record.items()}
                 if not all(math.isfinite(v) for v in row.values()):
                     raise ValueError('Nonfinite value: '+name)
                 for key in ['step','level','i','j','k']:

@@ -23,6 +23,7 @@
 
 module hy_gpu_amr_adapter
   use hy_gpu_amr_advance_module, only: hy_gpu_amr_advance,rk,hydro_parameters,HY_OK
+  use hy_gpu_amr_timing
   use Grid_interface, only: Grid_getTileIterator,Grid_releaseTileIterator,Grid_putFluxData
   use Grid_tile, only: Grid_tile_t
   use Grid_iterator, only: Grid_iterator_t
@@ -47,6 +48,8 @@ contains
       hy_smallE,hy_tiny,hy_coeffArray,hy_weights
     use Eos_data, only: eos_gamma,eos_smalle,eos_eintSwitch
     real,intent(in)::dt
+    type(hy_amr_profile)::profile
+    real(8)::adapterStamp,phaseStamp
     type(Grid_iterator_t)::iterator
     type(Grid_tile_t)::tile
     type(Grid_tile_t),allocatable::tiles(:)
@@ -62,6 +65,7 @@ contains
     logical::allocatedBatch
     character(80)::failedOperation
     character(256)::abortMessage
+    call profile_start(P_TOTAL,adapterStamp)
     if(.not.hy_telescoping.or.hy_fluxCorrectPerLevel.or.hy_geometry/=CARTESIAN.or.hy_threadWithinBlock) &
       call Driver_abort('HY_GPU_AMR requires Cartesian telescoping and ordinary flux correction')
     if(NGUARD<NSTENCIL+3) call Driver_abort('HY_GPU_AMR: insufficient telescoping guards')
@@ -69,10 +73,12 @@ contains
     if(NFLUXES/=5) call Driver_abort('HY_GPU_AMR: expected five hydrodynamic fluxes')
     call RuntimeParameters_get('hy_gpuBatchSize',capacity)
     if(capacity<1) call Driver_abort('HY_GPU_AMR: hy_gpuBatchSize must be positive')
+    call profile_start(P_PROBE,phaseStamp)
     hostFlag=1
     !$omp target map(from:hostFlag)
     if(.not.omp_is_initial_device()) hostFlag=0
     !$omp end target
+    call profile_stop(P_PROBE,phaseStamp,profile)
 #ifdef HY_GPU_AMR_CPU_TEST
     if(hostFlag/=1) call Driver_abort('HY_GPU_AMR CPU test: set OMP_TARGET_OFFLOAD=DISABLED')
     print *, 'HY_GPU_AMR: CPU testing mode; OpenMP target regions execute on host'
@@ -111,7 +117,7 @@ contains
       if(any(lc(1:NDIM)/=lo(1:NDIM)-ng).or.any(hc(1:NDIM)/=hi(1:NDIM)+ng)) &
         call Driver_abort('HY_GPU_AMR: unexpected prepared guard extent')
       if(count>0) then
-        if(tile%level/=batchLevel.or.any(spacing/=batchSpacing)) call flush_batch()
+        if(tile%level/=batchLevel.or.any(spacing/=batchSpacing)) call flush_batch(2)
       end if
       if(count==0) then
         batchSpacing=spacing; batchLevel=tile%level
@@ -119,9 +125,12 @@ contains
       count=count+1; tiles(count)=tile
       call tile%getDataPtr(u,CENTER)
       ! Same CPU shock preparation as Hydro_prepBlock; device copies establish U0/U*.
+      call profile_start(P_PREP,phaseStamp)
       allocate(vc(lc(1):hc(1),lc(2):hc(2),lc(3):hc(3)))
       call hy_rk_shockDetect(u,vc,tile%blkLimitsGC,lc)
       deallocate(vc)
+      call profile_stop(P_PREP,phaseStamp,profile)
+      call profile_start(P_PACK,phaseStamp)
       do k=lc(3),hc(3)
       do j=lc(2),hc(2)
         do i=lc(1),hc(1)
@@ -137,18 +146,25 @@ contains
       end do
       end do
       call tile%releaseDataPtr(u,CENTER)
-      if(count==capacity) call flush_batch()
+      call profile_stop(P_PACK,phaseStamp,profile)
+      if(count==capacity) call flush_batch(1)
       call iterator%next()
     end do
-    if(count>0) call flush_batch()
+    if(count>0) call flush_batch(3)
     call Grid_releaseTileIterator(iterator)
+    call profile_start(P_RELEASE,phaseStamp)
     if(allocatedBatch) then
       !$omp target exit data map(delete:state,reference,minus,plus,flat,flux,buffers)
       deallocate(state,reference,minus,plus,flat,flux,buffers)
     end if
     deallocate(tiles)
+    call profile_stop(P_RELEASE,phaseStamp,profile)
+    call profile_stop(P_TOTAL,adapterStamp,profile)
+    call profile_write(profile,capacity)
   contains
     subroutine allocate_batch()
+      real(8)::stamp
+      call profile_start(P_ALLOC,stamp)
       allocate(state(1-ng:nx+ng,1-ng:ny+ng,1-(NDIM-2)*ng:nz+(NDIM-2)*ng,9,capacity),reference(1-ng:nx+ng,1-ng:ny+ng, &
   & 1-(NDIM-2)*ng:nz+(NDIM-2)*ng,9,capacity))
       allocate(minus(1-ng:nx+ng,1-ng:ny+ng,1-(NDIM-2)*ng:nz+(NDIM-2)*ng,7,capacity),plus(1-ng:nx+ng,1-ng:ny+ng,1-( &
@@ -158,14 +174,29 @@ contains
   & ny+1,nz+(NDIM-2),5,NDIM,capacity))
       !$omp target enter data map(alloc:state,reference,minus,plus,flat,flux,buffers)
       allocatedBatch=.true.
+      call profile_stop(P_ALLOC,stamp,profile)
     end subroutine
-    subroutine flush_batch()
+    subroutine flush_batch(reason)
+      integer,intent(in)::reason
+      real(8)::stamp
       integer::q,ix,jy,kz,ll(3),hh(3),lg(3)
+      profile%batches=profile%batches+1
+      profile%blocks=profile%blocks+count
+      profile%minBatch=min(profile%minBatch,count)
+      profile%maxBatch=max(profile%maxBatch,count)
+      select case(reason)
+      case(1)
+        profile%capacityFlush=profile%capacityFlush+1
+      case(2)
+        profile%levelFlush=profile%levelFlush+1
+      case(3)
+        profile%tailFlush=profile%tailFlush+1
+      end select
       ! Prefix sections are contiguous; the final incomplete batch uses count, not capacity.
       call hy_gpu_amr_advance(state(:,:,:,:,1:count),reference(:,:,:,:,1:count),minus(:,:,:,:,1:count), &
         plus(:,:,:,:,1:count),flat(:,:,:,1:count),flux(:,:,:,:,:,1:count),buffers(:,:,:,:,:,1:count), &
         nx,ny,nz,count,ng,NSTENCIL,batchSpacing(1),batchSpacing(2),batchSpacing(3),dt,coefficients,weights,params, &
-        hy_smallE,eos_gamma,eos_smalle,eos_eintSwitch,status,failedStage,failedOperation)
+        hy_smallE,eos_gamma,eos_smalle,eos_eintSwitch,status,failedStage,failedOperation,profile)
       if(status/=HY_OK) then
         print *, 'HY_GPU_AMR failure: status,stage,level,batch count=',status,failedStage,batchLevel,count
         print *, 'HY_GPU_AMR input: nx,ny,nz,guards,stencil=',nx,ny,nz,ng,NSTENCIL
@@ -177,6 +208,7 @@ contains
         call Driver_abort(trim(abortMessage))
       end if
       do q=1,count
+        call profile_start(P_UNPACK,stamp)
         ll=tiles(q)%limits(LOW,:); hh=tiles(q)%limits(HIGH,:); lg=tiles(q)%blkLimitsGC(LOW,:)
         call tiles(q)%getDataPtr(u,CENTER)
         do kz=1,nz
@@ -188,10 +220,14 @@ contains
           end do
         end do
         end do
+        call profile_stop(P_UNPACK,stamp,profile)
         ! Populate all mapped EOS outputs (TEMP, GAME, entropy if present) on CPU.
+        call profile_start(P_HOST_EOS,stamp)
         call Eos_multiDim(MODE_DENS_EI,tiles(q)%limits,lg,u)
+        call profile_stop(P_HOST_EOS,stamp,profile)
         call tiles(q)%releaseDataPtr(u,CENTER)
         if(hy_fluxCorrect) then
+          call profile_start(P_PUBLISH,stamp)
           allocate(fx(NFLUXES,ll(1):hh(1)+1,ll(2):hh(2),ll(3):hh(3)))
           allocate(fy(NFLUXES,ll(1):hh(1),ll(2):hh(2)+1,ll(3):hh(3)))
           allocate(fz(NFLUXES,ll(1):hh(1),ll(2):hh(2),ll(3):hh(3)+1))
@@ -222,6 +258,7 @@ contains
           ! Match Hydro_math.ini: default telescoping Grid flux-buffer convention.
           call Grid_putFluxData(tiles(q),fx,fy,fz,ll)
           deallocate(fx,fy,fz)
+          call profile_stop(P_PUBLISH,stamp,profile)
         end if
       end do
       count=0

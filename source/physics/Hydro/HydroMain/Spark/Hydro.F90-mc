@@ -145,7 +145,13 @@ subroutine Hydro(timeEndAdv, dt, dtOld, sweepOrder)
    if (hy_fluxCorrect) call Grid_zeroFluxData()
 
    if (hy_telescoping) then
+#ifdef HY_GPU_AMR
+      call Timers_start("GPU AMR guard fill")
+#endif
       @M hy_globalFillGuardCells
+#ifdef HY_GPU_AMR
+      call Timers_stop("GPU AMR guard fill")
+#endif
    end if
    !-------------------------------------------------------------------!
    !***NO Flux correction    or   Flux correction but NOT per level****!
@@ -256,6 +262,9 @@ subroutine Hydro(timeEndAdv, dt, dtOld, sweepOrder)
       @M hy_end_stages_nt
 #endif
       if (hy_fluxCorrect) then
+#ifdef HY_GPU_AMR
+         call Timers_start("GPU AMR reflux")
+#endif
          !Communicate the fine fluxes
          call Grid_communicateFluxes(ALLDIR, UNSPEC_LEVEL)
 
@@ -300,6 +309,9 @@ subroutine Hydro(timeEndAdv, dt, dtOld, sweepOrder)
             @M hy_release_geom
          end if
          @M iter_end(Uin)
+#ifdef HY_GPU_AMR
+         call Timers_stop("GPU AMR reflux")
+#endif
       end if !Flux correction
    else !flux correct per level
 #ifdef DEBUG_HYDRO

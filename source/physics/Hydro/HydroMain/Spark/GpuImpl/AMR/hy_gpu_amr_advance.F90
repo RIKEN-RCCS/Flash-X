@@ -2,10 +2,13 @@
 ! No Grid operations or mutable module configuration in this numerical driver.
 module hy_gpu_amr_advance_module
   use hy_gpu_amr_kernels
+  use hy_gpu_amr_timing
   implicit none
 contains
   subroutine hy_gpu_amr_advance(state,reference,minus,plus,flat,flux,buffers,nx,ny,nz,nb,ng,stencil, &
-      dx,dy,dz,dt,coefficients,weights,params,energyFloor,gamma,eosFloor,eintSwitch,status,failedStage,failedOperation)
+      dx,dy,dz,dt,coefficients,weights,params,energyFloor,gamma,eosFloor,eintSwitch,status,failedStage,failedOperation,profile)
+    type(hy_amr_profile),intent(inout)::profile
+    real(8)::phaseStamp,advanceStamp
     integer,intent(in)::nx,ny,nz,nb,ng,stencil
     real(rk),intent(inout)::state(1-ng:nx+ng,1-ng:ny+ng,1-(NDIM-2)*ng:nz+(NDIM-2)*ng,9,nb)
     real(rk),intent(inout)::reference(1-ng:nx+ng,1-ng:ny+ng,1-(NDIM-2)*ng:nz+(NDIM-2)*ng,9,nb)
@@ -28,9 +31,13 @@ contains
     if(min(dx,dy,dz,dt)<=0.or.gamma<=1.or.min(energyFloor,eosFloor,eintSwitch)<0) return
     failedOperation='nonfinite RK coefficients/weights'
     if(.not.all(ieee_is_finite(coefficients)).or..not.all(ieee_is_finite(weights))) return
+    call profile_start(P_ADVANCE,advanceStamp)
     ! Owner has already allocated persistent device buffers for the maximum batch.
     !$omp target data map(alloc:state,reference,minus,plus,flat,flux,buffers)
+    call profile_start(P_TO,phaseStamp)
     !$omp target update to(state)
+    call profile_stop(P_TO,phaseStamp,profile)
+    call profile_start(P_SAVE,phaseStamp)
     !$omp target teams distribute parallel do collapse(4) private(v)
     do b=1,nb
       do k=1-(NDIM-2)*ng,nz+(NDIM-2)*ng
@@ -44,22 +51,29 @@ contains
     end do
       end do
     !$omp end target teams distribute parallel do
+    call profile_stop(P_SAVE,phaseStamp,profile)
     do stage=1,2
       failedStage=stage
       lower=1; upper=[nx,ny,nz]
       lower(1:NDIM)=1-(2-stage)*stencil
       upper(1:NDIM)=upper(1:NDIM)+(2-stage)*stencil
       failedOperation='flattening'
+      call profile_start(P_FLAT,phaseStamp)
       call flatten(state,flat,nx,ny,nz,nb,ng,lower,upper,params,error)
+      call profile_stop(P_FLAT,phaseStamp,profile)
       if(error/=HY_OK) then
         status=error; exit
       end if
       do d=1,NDIM
         write(failedOperation,'(A,I0)') 'reconstruction direction ',d
+        call profile_start(P_RECON,phaseStamp)
         call reconstruct(state,flat,minus,plus,nx,ny,nz,nb,ng,lower,upper,params,d,error)
+        call profile_stop(P_RECON,phaseStamp,profile)
         if(error/=HY_OK) exit
         write(failedOperation,'(A,I0)') 'Riemann flux direction ',d
+        call profile_start(P_RIEMANN,phaseStamp)
         call faces(state,minus,plus,flux,nx,ny,nz,nb,ng,lower,upper,params,d,error)
+        call profile_stop(P_RIEMANN,phaseStamp,profile)
         if(error/=HY_OK) then
           !$omp target update from(state,minus,plus)
           call diagnose_faces(state,minus,plus,flux,nx,ny,nz,nb,ng,lower,upper,params,d,diagnosticError)
@@ -71,12 +85,15 @@ contains
         status=error; exit
       end if
       failedOperation='solution update'
+      call profile_start(P_UPDATE,phaseStamp)
       call update(reference,state,flux,nx,ny,nz,nb,ng,lower,upper,dx,dy,dz,dt, &
                   coefficients(:,stage),params%density_floor,energyFloor,error)
+      call profile_stop(P_UPDATE,phaseStamp,profile)
       if(error/=HY_OK) then
         status=error; exit
       end if
       ! Flash-X telescoping SPFS requires weighted flux DENSITIES: no dt or area.
+      call profile_start(P_FLUX,phaseStamp)
       wt=weights(stage)
       do d=1,NDIM
         ex=0; ey=0; ez=0
@@ -98,8 +115,10 @@ contains
         end do
         !$omp end target teams distribute parallel do
       end do
+      call profile_stop(P_FLUX,phaseStamp,profile)
       ! MODE_DENS_EI preprocessing/postprocessing from Eos.ini, then gamma-law p.
       ! Temperature/GAME/entropy are restored by the host EOS after unpacking.
+      call profile_start(P_EOS,phaseStamp)
       failedOperation='gamma-law EOS recovery'
       error=HY_OK
       !$omp target teams distribute parallel do collapse(4) private(ekin,internal,candidate) reduction(max:error)
@@ -120,15 +139,19 @@ contains
       end do
         end do
       !$omp end target teams distribute parallel do
+      call profile_stop(P_EOS,phaseStamp,profile)
       if(error/=HY_OK) then
         status=error; exit
       end if
       status=HY_OK
     end do
     if(status==HY_OK) then
+      call profile_start(P_FROM,phaseStamp)
       !$omp target update from(state,buffers)
+      call profile_stop(P_FROM,phaseStamp,profile)
       failedStage=0; failedOperation='none'
     end if
     !$omp end target data
+    call profile_stop(P_ADVANCE,advanceStamp,profile)
   end subroutine
 end module

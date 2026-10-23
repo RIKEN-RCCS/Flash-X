@@ -56,7 +56,7 @@ class AmrGenerationTests(unittest.TestCase):
                     for name in ['constants.h','Spark.h','Eos.h']:
                         (output/name).write_text('')
                     texts={}
-                    for name in ['hy_gpu_amr_kernels.F90','hy_gpu_amr_advance.F90','hy_gpu_amr_adapter.F90','hy_gpu_amr_dump.F90']:
+                    for name in ['hy_gpu_amr_kernels.F90','hy_gpu_amr_advance.F90','hy_gpu_amr_adapter.F90','hy_gpu_amr_dump.F90','hy_gpu_amr_timing.F90']:
                         result=subprocess.run([cpp,'-E','-P','-traditional-cpp','-x','c','-I',str(output),str(ROOT/name)],
                                               capture_output=True,text=True)
                         self.assertEqual(result.returncode,0,result.stderr)
@@ -92,6 +92,31 @@ class AmrGenerationTests(unittest.TestCase):
                     else:
                         self.assertNotIn('buffers(ix,jy,kz,v,3,q)',adapter)
                         self.assertIn('spacing(3)=1.0',adapter)
+
+    def test_timing_boundaries_and_build_dependencies(self):
+        for name in ('hy_gpu_amr_adapter.F90','hy_gpu_amr_advance.F90'):
+            text=(ROOT/name).read_text()
+            stack=[]
+            for line in text.splitlines():
+                start=re.search(r'call profile_start\((P_\w+),',line)
+                stop=re.search(r'call profile_stop\((P_\w+),',line)
+                if start:
+                    stack.append(start[1])
+                if stop:
+                    self.assertTrue(stack,(name,line))
+                    self.assertEqual(stack.pop(),stop[1],(name,line))
+            self.assertEqual(stack,[],name)
+            # Instrumentation must not split a continued Fortran CALL.
+            self.assertNotRegex(text,r'&\s*\n\s*call profile_')
+            self.assertTrue(all(len(line)<=132 for line in text.splitlines()),name)
+        make=(ROOT/'Makefile').read_text()
+        self.assertIn('hy_gpu_amr_timing.o: Timers_interface.o',make)
+        self.assertIn('hy_gpu_amr_kernels.o hy_gpu_amr_timing.o',make)
+        adapter=(ROOT/'hy_gpu_amr_adapter.F90').read_text()
+        self.assertIn('if(count==capacity) call flush_batch(1)',adapter)
+        self.assertIn('if(count>0) call flush_batch(3)',adapter)
+        self.assertIn('call flush_batch(2)',adapter)
+        self.assertLess(adapter.index('call profile_stop(P_TOTAL'),adapter.index('call profile_write'))
 
     def test_native_macro_parser_does_not_discover_custom_layouts(self):
         # Flash-X loads *.ini from selected units, including AMR's GpuImpl parent.
@@ -161,7 +186,7 @@ class AmrGenerationTests(unittest.TestCase):
         self.assertIn('state(i,j,k,8,b)=internal+ekin',driver)
         adapter=(ROOT/'hy_gpu_amr_adapter.F90').read_text()
         self.assertIn('state(:,:,:,:,1:count)',adapter)
-        self.assertIn('if(count>0) call flush_batch()',adapter)
+        self.assertIn('if(count>0) call flush_batch(3)',adapter)
         self.assertIn('call tile%releaseDataPtr(u,CENTER)',adapter)
         self.assertIn('call tiles(q)%getDataPtr(u,CENTER)',adapter)
         self.assertIn('call Eos_multiDim(MODE_DENS_EI',adapter)

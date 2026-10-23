@@ -3,7 +3,7 @@ import csv
 from pathlib import Path
 import tempfile
 import unittest
-from compare_dumps import FIELDS,compare,load
+from compare_dumps import FIELDS,compare,load,parse_real
 
 class DumpTests(unittest.TestCase):
     def write(self,path,rows):
@@ -12,6 +12,16 @@ class DumpTests(unittest.TestCase):
 
     def row(self,x):
         return [10,0.1,0.01,2,1,1,1,x,0.5,0,0.5,1,1,1,0,0,0,1,2.5,2.5]
+
+    def test_fortran_exponents(self):
+        self.assertEqual(parse_real('-9.88387374319948384-146'),-9.88387374319948384e-146)
+        self.assertEqual(parse_real('1.25+123'),1.25e123)
+        self.assertEqual(parse_real('1.25D-100'),1.25e-100)
+        self.assertEqual(parse_real(' 1.25E-100 '),1.25e-100)
+        self.assertEqual(parse_real('-1.25'),-1.25)
+        for value in ('1.2-3.4','*******','1.2+foo'):
+            with self.assertRaises(ValueError):
+                parse_real(value)
 
     def test_different_rank_partitions_and_indices(self):
         with tempfile.TemporaryDirectory() as directory:

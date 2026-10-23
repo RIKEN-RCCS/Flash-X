@@ -303,3 +303,45 @@ Synthetic comparison tests (no solver execution):
 ```sh
 python3 source/physics/Hydro/HydroMain/Spark/GpuImpl/AMR/test_compare_dumps.py
 ```
+
+### Batch performance timings
+
+The Flash-X timer report now contains `GPU AMR guard fill`, `GPU AMR adapter`,
+and `GPU AMR reflux`. Guard filling and reflux remain on the CPU. The adapter
+contains allocation (host allocation plus device mapping), device availability
+probe, CPU shock preparation, packing, batch advance, unpacking, host EOS,
+flux publication, and release timers. Initial tile-descriptor allocation and
+iterator/metadata overhead are included in the adapter total.
+
+The batch-advance timer contains host-to-device transfer, reference copy,
+flattening, reconstruction, Riemann solve, solution update, flux accumulation,
+device EOS, and device-to-host transfer. Each numerical timer accumulates across
+all directions, RK stages, and batches in the Hydro invocation. These are host
+wall times around synchronous target operations, including launch and reduction
+overhead; they are not device-event kernel times. Mapping/control overhead is
+included in batch advance even when outside its child timers. Failed-run
+replay diagnostics are also included in batch advance.
+
+To obtain per-step, per-rank CSV timings and batch occupancy, rerun setup and
+rebuild, then set in `flash.par`:
+
+```text
+hy_gpuTimingInterval = 1
+hy_gpuTimingPrefix = "amr_timing"
+hy_gpuDumpInterval = 0
+```
+
+The timing interval defaults to zero (no CSV); Flash-X timer calls remain active.
+Each selected step writes `amr_timing_stepNNNNNNNNNN_rankNNNNNN.csv`, replacing
+that same step/rank filename on reruns. The row includes capacity, actual blocks,
+number of batches, minimum/maximum/mean batch size, occupancy (mean/capacity),
+counts of capacity/level-or-spacing/end-of-iterator submissions, and seconds for
+each adapter phase. No MPI reduction is performed. Guard-fill and reflux timings
+are in the Flash-X timer report, not these adapter CSV files.
+
+Keep problem size, timestep policy, step count, MPI placement, and output settings
+fixed when sweeping `hy_gpuBatchSize`. Exclude initial device startup steps when
+comparing steady-state CSV timings. Parent timers include their children: do not
+sum parent and child times. Across ranks, compare the slowest rank as well as the
+occupancy distribution rather than summing rank seconds. CSV writing is excluded
+from the adapter timer but still contributes to overall Hydro/job wall time.
