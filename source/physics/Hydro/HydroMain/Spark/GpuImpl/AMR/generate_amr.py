@@ -11,7 +11,7 @@ m=g.m
 
 def generate(output):
     output.mkdir(parents=True,exist_ok=True)
-    defs=[g.REF/'hydro_layout.ini',g.REF/'hydro_helpers.ini',g.REF/'update_helpers.ini',ROOT.parent/'gpu_layout_2d.ini']
+    defs=[g.REF/'hydro_layout.ini',g.REF/'hydro_helpers.ini',g.REF/'update_helpers.ini',ROOT/'amr_layout.ini-template']
     source=(ROOT/'amr_kernels.F90-template').read_text()
     face=(g.REF/'hy_getFaceFlux.F90-mc').read_text().split('            @hy_assembleFaceStates',1)[1]
     face='@hy_assembleFaceStates'+face.split('\n          end do',1)[0]
@@ -24,7 +24,7 @@ def generate(output):
             if '::' in line and not line.lstrip().startswith('!'):
                 names += [re.match(r'\s*(\w+)',s)[1] for s in m.split_arguments(line.split('::',1)[1])]
         clauses=['!$omp& private('+','.join(names[i:i+3])+') &' for i in range(0,len(names),3)]
-        return decl+'\n    error=0\n!$omp target teams distribute parallel do collapse(3) &\n'+'\n'.join(clauses)+'\n!$omp& reduction(max:error)'
+        return decl+'\n    error=0\n!$omp target teams distribute parallel do collapse(4) &\n'+'\n'.join(clauses)+'\n!$omp& reduction(max:error)'
     source=re.sub(r'! PRIVATE_BEGIN\n(.*?)! PRIVATE_END',private,source,flags=re.S)
     for name,arrays in {'flatten':'state,flat','reconstruct':'state,flat,minus,plus','faces':'state,minus,plus,flux','update':'reference,state,flux'}.items():
         start=source.index('  subroutine '+name+'('); end=source.index('  end subroutine',start)
@@ -32,8 +32,8 @@ def generate(output):
         init=''
         if name in ('reconstruct','faces'): init='    e=0; e(d)=1\n'
         if name=='faces': init+='    inputMap=primitiveMap; outputMap=conservedMap; shockVariable=9\n'
-        if name=='update': init+='    spacing=[dx,dy,1._rk]\n'
-        part=part.replace('    error=0',init+'    error=0').replace('collapse(3) &','collapse(3) map(alloc:'+arrays+') &')
+        if name=='update': init+='    spacing=[dx,dy,dz]\n'
+        part=part.replace('    error=0',init+'    error=0').replace('collapse(4) &','collapse(4) map(alloc:'+arrays+') &')
         source=source[:start]+part+source[end:]
     assert not re.search(r'\bassociate\s*\(|macro_scope_\d+_arg_|@',source,re.I)
     (output/'hy_gpu_amr_kernels.F90').write_text(m.wrap_fortran(source))

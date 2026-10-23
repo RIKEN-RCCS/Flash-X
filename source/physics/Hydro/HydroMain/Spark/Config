@@ -167,3 +167,9 @@ IF threadWithinBlock
   REQUIRES physics/Hydro/HydroMain/Spark/omp
 ENDIF
 
+
+# Optional prepared-block GPU batching; Grid and reflux remain on the host.
+USESETUPVARS gpuAmr
+IF gpuAmr
+  REQUIRES physics/Hydro/HydroMain/Spark/GpuImpl/AMR
+ENDIF

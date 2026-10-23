@@ -1,12 +1,12 @@
 # Flash-X AMR batch adapter
 
-This optional backend connects the existing 2D GPU arithmetic to Flash-X's
-ordinary telescoping AMR advance. Grid operations and reflux stay on the CPU.
+This optional backend connects the existing GPU arithmetic to Flash-X's
+ordinary telescoping AMR advance in both 2D and 3D. Grid operations and reflux stay on the CPU.
 The standalone 1D/2D GPU programs are unchanged.
 
 ## Supported initial configuration
 
-- 2D Cartesian AMR, equal-sized full leaf blocks, variable-first host arrays.
+- 2D or 3D Cartesian AMR, equal-sized full leaf blocks, variable-first host arrays.
 - Telescoping RK2 and default WENO reconstruction; no rk3 subunit.
 - Non-hybrid Gamma EOS; no gravity, MHD, species, mass scalars, or index reordering.
 - Ordinary flux correction, not flux_correct_perLevel.
@@ -25,7 +25,7 @@ From the Flash-X root, before setup:
 python3 source/physics/Hydro/HydroMain/Spark/GpuImpl/AMR/generate_amr.py
 ```
 
-Add `gpuAmr=True` to your existing successful 2D Spark AMR/Gamma setup command.
+Add `gpuAmr=True` to your existing successful 2D or 3D Spark AMR/Gamma setup command.
 Keep its normal machine, mesh, precision, and problem options. Do not select
 `omp_offload`, `oacc`, `Milhoja`, `threadWithinBlock`, non-telescoping, or an
 alternative reconstruction. The AMR Config requires the Gamma and AMR units,
@@ -116,7 +116,7 @@ arithmetic-equivalence reference.
    solution profiles, and weighted flux buffers against the CPU run.
 2. Repeat with batch sizes 1, 3 and 32, including a leaf count not divisible by
    batch size. Batch size 1 is a correctness case, not the intended performance mode.
-3. Exercise multiple levels and both x/y interface orientations. Enable regridding
+3. Exercise multiple levels and all active interface orientations (x/y in 2D, x/y/z in 3D). Enable regridding
    only after the fixed hierarchy passes; then test MPI ranks, including empty ranks.
 4. Run Compute Sanitizer on a small AMR application before timing. Verify all
    Grid/reflux operations remain host-side and large transfers occur per batch,
@@ -133,3 +133,45 @@ Hydro scratch allocations are retained for compatibility with the CPU correction
 pass; reducing their unused storage and persisting batch storage across Hydro
 calls are subsequent optimizations. No CPU/GPU speedup is claimed for this
 integration before its complete packing/transfer/EOS/reflux costs are measured.
+
+## 3D extension and 2D compatibility
+
+The same generated sources now compile with NDIM=2 or NDIM=3 from Simulation.h.
+For a 3D run, regenerate the sources and use your normal **3D** Spark AMR/Gamma
+setup with `gpuAmr=True`; do a fresh setup/build so incompatible 2D module files
+are not reused. No extra generator dimension option is needed. Other restrictions
+(RK2, Cartesian, WENO, ordinary reflux, host variable-first storage) still apply.
+
+Compact cell batches have dimensions (i,j,k,variable,block), flattening scratch
+(i,j,k,block), and directional face arrays (i,j,k,component,direction,block).
+The backend definitions are in amr_layout.ini-template; the suffix keeps this
+custom macro syntax out of Flash-X setup's standard INI parser. GPU loops collapse block/k/j/i;
+2D has one unguarded k plane, while 3D includes the prepared z guards. Stage
+bounds shrink in every active direction. Directional reconstruction remains
+sequential so minus/plus scratch can be reused safely. Z flux divergence uses
+the unchanged update helper. The adapter packs/unpacks all k planes and returns
+z-face RK-weighted flux densities to the existing Grid_putFluxData/reflux path.
+
+Start 3D validation with a small fixed AMR hierarchy and `hy_gpuBatchSize=1` or 2.
+Repeat planar shock tests along x, y and z against matched CPU RK2 results, then
+add a genuinely 3D initial condition. Check all momentum components and conserved
+budgets after refluxing. Repeat with a partial batch, multiple refinement levels,
+and finally regridding/MPI. Rerun the 2D AMR case too: its internal storage rank
+has changed even though its physical equations and inactive dimension have not.
+
+Memory grows with the fully guarded block volume. With real size R, batch capacity
+B and dimension D, approximate device array storage is
+
+```text
+R * B * (33*Vguard + 5*D*(Vface_padded + Vface_interior))
+```
+
+Vguard includes guards only on active axes. The face volumes use a rectangular
+allocation with one extra index in every active axis, even though a directional
+face set needs the extra index only along its normal. Compiler temporaries and
+runtime allocations are additional, and host backing arrays also consume memory.
+Increase batch size only after checking available device and host memory.
+
+Local tests perform source generation, setup-contract checks, and C preprocessing
+for NDIM=2/3 (with synthetic headers), including balanced-loop and z-flux output
+checks. These are not Fortran compilation or numerical/device validation.

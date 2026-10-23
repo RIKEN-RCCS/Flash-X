@@ -28,7 +28,13 @@
 #endif
 #define DEBUG_GRID_GCMASK
 
+#include "Simulation.h"
+
 subroutine Hydro(timeEndAdv, dt, dtOld, sweepOrder)
+
+#ifdef HY_GPU_AMR
+   use hy_gpu_amr_adapter, ONLY: hy_gpu_amr_hydro, hy_gpu_amr_check
+#endif
 
    use Grid_interface, ONLY: Grid_getTileIterator, &
                              Grid_releaseTileIterator, &
@@ -109,6 +115,9 @@ subroutine Hydro(timeEndAdv, dt, dtOld, sweepOrder)
    integer :: error
 
    if (.NOT. hy_useHydro) return
+#ifdef HY_GPU_AMR
+   call hy_gpu_amr_check()
+#endif
 
    ! Check for some incompatible configuration options; perhaps move to Hydro_init
    @M hy_check_config
@@ -142,6 +151,9 @@ subroutine Hydro(timeEndAdv, dt, dtOld, sweepOrder)
    !-------------------------------------------------------------------!
    stage = 1
    if ((.NOT. hy_fluxCorrect) .OR. ((hy_fluxCorrect) .AND. (.NOT. hy_fluxCorrectPerLevel))) then
+#ifdef HY_GPU_AMR
+      call hy_gpu_amr_hydro(dt)
+#else
       @M hy_stages_nt !! this is the do loop statement for non-telescoping version
       if (.NOT. hy_telescoping) then
          @M hy_globalFillGuardCells
@@ -241,6 +253,7 @@ subroutine Hydro(timeEndAdv, dt, dtOld, sweepOrder)
       end if
       @M iter_end(Uin)
       @M hy_end_stages_nt
+#endif
       if (hy_fluxCorrect) then
          !Communicate the fine fluxes
          call Grid_communicateFluxes(ALLDIR, UNSPEC_LEVEL)

@@ -1,3 +1,4 @@
+#include "Simulation.h"
 ! One launch covers all blocks; arithmetic helpers are imported unchanged from NewImpl.
 module hy_gpu_amr_kernels
   use hy_gpu_amr_types
@@ -8,54 +9,57 @@ module hy_gpu_amr_kernels
   integer, parameter :: primitiveMap(7)=[1,2,3,4,5,6,7],acousticMap(6)=[1,2,3,4,5,6]
   integer, parameter :: updateMap(6)=[1,2,3,4,8,7],conservedMap(5)=[1,2,3,4,5],xOffset(3)=[1,0,0]
 contains
-  subroutine flatten(state,flat,nx,ny,nb,ng,lower,upper,params,error)
+  subroutine flatten(state,flat,nx,ny,nz,nb,ng,lower,upper,params,error)
 use, intrinsic :: ieee_arithmetic, only: ieee_is_finite
-    integer,intent(in):: nx,ny,nb,ng,lower(2),upper(2)
-    real(rk),intent(in)::state(1-ng:nx+ng,1-ng:ny+ng,9,nb)
-    real(rk),intent(inout)::flat(1-ng:nx+ng,1-ng:ny+ng,nb)
+    integer,intent(in):: nx,ny,nz,nb,ng,lower(3),upper(3)
+    real(rk),intent(in)::state(1-ng:nx+ng,1-ng:ny+ng,1-(NDIM-2)*ng:nz+(NDIM-2)*ng,9,nb)
+    real(rk),intent(inout)::flat(1-ng:nx+ng,1-ng:ny+ng,1-(NDIM-2)*ng:nz+(NDIM-2)*ng,nb)
     type(hydro_parameters),intent(in)::params
     integer,intent(out)::error
-    integer::i,j,block,status
+    integer::i,j,k,block,status
     real(rk)::f
 integer :: macro_scope_1_local_d,macro_scope_1_local_e(3)
 real(rk) :: macro_scope_1_local_p,macro_scope_1_local_g,macro_scope_1_local_dp,macro_scope_1_local_b, &
   & macro_scope_1_local_z,macro_scope_1_local_a,macro_scope_1_local_fd,macro_scope_1_local_un,macro_scope_1_local_up
 
     error=0
-!$omp target teams distribute parallel do collapse(3) map(alloc:state,flat) &
-!$omp& private(i,j,block) &
-!$omp& private(status,f,macro_scope_1_local_d) &
-!$omp& private(macro_scope_1_local_e,macro_scope_1_local_p,macro_scope_1_local_g) &
-!$omp& private(macro_scope_1_local_dp,macro_scope_1_local_b,macro_scope_1_local_z) &
-!$omp& private(macro_scope_1_local_a,macro_scope_1_local_fd,macro_scope_1_local_un) &
-!$omp& private(macro_scope_1_local_up) &
+!$omp target teams distribute parallel do collapse(4) map(alloc:state,flat) &
+!$omp& private(i,j,k) &
+!$omp& private(block,status,f) &
+!$omp& private(macro_scope_1_local_d,macro_scope_1_local_e,macro_scope_1_local_p) &
+!$omp& private(macro_scope_1_local_g,macro_scope_1_local_dp,macro_scope_1_local_b) &
+!$omp& private(macro_scope_1_local_z,macro_scope_1_local_a,macro_scope_1_local_fd) &
+!$omp& private(macro_scope_1_local_un,macro_scope_1_local_up) &
 !$omp& reduction(max:error)
     do block=1,nb
+      do k=lower(3)-(NDIM-2),upper(3)+(NDIM-2)
       do j=lower(2)-1,upper(2)+1
       do i=lower(1)-1,upper(1)+1
 macro_scope_1: do
 status=HY_OK; f=1._rk
 if (.not.params%flattening) exit macro_scope_1
-macro_scope_1_local_p=state(i,j,primitiveMap(QP),block)
-macro_scope_1_local_g=state(i,j,primitiveMap(QGAMMA),block)
+macro_scope_1_local_p=state(i,j,k,primitiveMap(QP),block)
+macro_scope_1_local_g=state(i,j,k,primitiveMap(QGAMMA),block)
 if (.not.ieee_is_finite(macro_scope_1_local_p*macro_scope_1_local_g)) then
   status=HY_BAD_STATE; exit macro_scope_1
 end if
 if (macro_scope_1_local_p*macro_scope_1_local_g<=0._rk) then
   status=HY_BAD_STATE; exit macro_scope_1
 end if
-do macro_scope_1_local_d=1,(2)
+do macro_scope_1_local_d=1,NDIM
   macro_scope_1_local_e=0; macro_scope_1_local_e(macro_scope_1_local_d)=1
-  macro_scope_1_local_dp=abs(state(i+macro_scope_1_local_e(1),j+macro_scope_1_local_e(2),primitiveMap(QP),block) - &
-  state(i-macro_scope_1_local_e(1),j-macro_scope_1_local_e(2),primitiveMap(QP),block))
+  macro_scope_1_local_dp=abs(state(i+macro_scope_1_local_e(1),j+macro_scope_1_local_e(2),k+macro_scope_1_local_e(3), &
+  & primitiveMap(QP),block) - &
+  state(i-macro_scope_1_local_e(1),j-macro_scope_1_local_e(2),k-macro_scope_1_local_e(3),primitiveMap(QP),block))
   macro_scope_1_local_b=macro_scope_1_local_dp/max(params%flattening_eta, &
-  abs(state(i+2*macro_scope_1_local_e(1),j+2*macro_scope_1_local_e(2),primitiveMap(QP),block) - &
-  state(i-2*macro_scope_1_local_e(1),j-2*macro_scope_1_local_e(2),primitiveMap(QP),block)))
+  abs(state(i+2*macro_scope_1_local_e(1),j+2*macro_scope_1_local_e(2),k+2*macro_scope_1_local_e(3),primitiveMap(QP), &
+  & block) - &
+  state(i-2*macro_scope_1_local_e(1),j-2*macro_scope_1_local_e(2),k-2*macro_scope_1_local_e(3),primitiveMap(QP),block)))
   macro_scope_1_local_z=macro_scope_1_local_dp/(macro_scope_1_local_g*macro_scope_1_local_p)
   macro_scope_1_local_a=max(0._rk,min(1._rk,(0.85_rk-macro_scope_1_local_b)/0.10_rk))
-  macro_scope_1_local_un=state(i,j,primitiveMap(QUX+macro_scope_1_local_d-1),block)
-  macro_scope_1_local_up=state(i+macro_scope_1_local_e(1),j+macro_scope_1_local_e(2),primitiveMap( &
-  & QUX+macro_scope_1_local_d-1),block)
+  macro_scope_1_local_un=state(i,j,k,primitiveMap(QUX+macro_scope_1_local_d-1),block)
+  macro_scope_1_local_up=state(i+macro_scope_1_local_e(1),j+macro_scope_1_local_e(2),k+macro_scope_1_local_e(3), &
+  & primitiveMap(QUX+macro_scope_1_local_d-1),block)
   macro_scope_1_local_fd=1._rk
   if (macro_scope_1_local_up<macro_scope_1_local_un) macro_scope_1_local_fd=max(macro_scope_1_local_a,min(1._rk,( &
   & 0.75_rk-macro_scope_1_local_z)/0.50_rk))
@@ -65,49 +69,54 @@ if (.not.ieee_is_finite(f)) status=HY_BAD_STATE
 exit macro_scope_1
 end do macro_scope_1
         error=max(error,status)
-        flat(i,j,block)=f
+        flat(i,j,k,block)=f
       end do
     end do
+      end do
       end do
     !$omp end target teams distribute parallel do
   end subroutine
 
-  subroutine reconstruct(state,flat,minus,plus,nx,ny,nb,ng,lower,upper,params,d,error)
+  subroutine reconstruct(state,flat,minus,plus,nx,ny,nz,nb,ng,lower,upper,params,d,error)
 
-    integer,intent(in)::nx,ny,nb,ng,lower(2),upper(2),d
-    real(rk),intent(in)::state(1-ng:nx+ng,1-ng:ny+ng,9,nb),flat(1-ng:nx+ng,1-ng:ny+ng,nb)
-    real(rk),intent(inout)::minus(1-ng:nx+ng,1-ng:ny+ng,7,nb),plus(1-ng:nx+ng,1-ng:ny+ng,7,nb)
+    integer,intent(in)::nx,ny,nz,nb,ng,lower(3),upper(3),d
+    real(rk),intent(in)::state(1-ng:nx+ng,1-ng:ny+ng,1-(NDIM-2)*ng:nz+(NDIM-2)*ng,9,nb),flat(1-ng:nx+ng,1-ng:ny+ng,1-( &
+  & NDIM-2)*ng:nz+(NDIM-2)*ng,nb)
+    real(rk),intent(inout)::minus(1-ng:nx+ng,1-ng:ny+ng,1-(NDIM-2)*ng:nz+(NDIM-2)*ng,7,nb),plus(1-ng:nx+ng,1-ng:ny+ng, &
+  & 1-(NDIM-2)*ng:nz+(NDIM-2)*ng,7,nb)
     integer::e(3)
     type(hydro_parameters),intent(in)::params
     integer,intent(out)::error
-    integer::i,j,block,v
+    integer::i,j,k,block,v
     real(rk)::stencil(-2:2),cm(3),cp(3),wm(3),wp(3),qm,qp,f
 integer :: macro_scope_10_local_s,macro_scope_10_local_ii,macro_scope_10_local_jj,macro_scope_10_local_kk
 real(rk) :: macro_scope_13_local_beta(3),macro_scope_13_local_correction(3),macro_scope_13_local_tau
 
     e=0; e(d)=1
     error=0
-!$omp target teams distribute parallel do collapse(3) map(alloc:state,flat,minus,plus) &
-!$omp& private(i,j,block) &
-!$omp& private(v,stencil,cm) &
-!$omp& private(cp,wm,wp) &
-!$omp& private(qm,qp,f) &
-!$omp& private(macro_scope_10_local_s,macro_scope_10_local_ii,macro_scope_10_local_jj) &
-!$omp& private(macro_scope_10_local_kk,macro_scope_13_local_beta,macro_scope_13_local_correction) &
-!$omp& private(macro_scope_13_local_tau) &
+!$omp target teams distribute parallel do collapse(4) map(alloc:state,flat,minus,plus) &
+!$omp& private(i,j,k) &
+!$omp& private(block,v,stencil) &
+!$omp& private(cm,cp,wm) &
+!$omp& private(wp,qm,qp) &
+!$omp& private(f,macro_scope_10_local_s,macro_scope_10_local_ii) &
+!$omp& private(macro_scope_10_local_jj,macro_scope_10_local_kk,macro_scope_13_local_beta) &
+!$omp& private(macro_scope_13_local_correction,macro_scope_13_local_tau) &
 !$omp& reduction(max:error)
     do block=1,nb
+      do k=lower(3)-e(3),upper(3)+e(3)
       do j=lower(2)-e(2),upper(2)+e(2)
       do i=lower(1)-e(1),upper(1)+e(1)
-        f=flat(i,j,block)
+        f=flat(i,j,k,block)
         do v=1,7
 macro_scope_10: do
 do macro_scope_10_local_s=-2,2
   macro_scope_10_local_ii=i+macro_scope_10_local_s*e(1); macro_scope_10_local_jj=j+macro_scope_10_local_s*e(2); &
-  & macro_scope_10_local_kk=(1)+macro_scope_10_local_s*e(3)
-  stencil(macro_scope_10_local_s)=state(macro_scope_10_local_ii,macro_scope_10_local_jj,primitiveMap(v),block)
+  & macro_scope_10_local_kk=k+macro_scope_10_local_s*e(3)
+  stencil(macro_scope_10_local_s)=state(macro_scope_10_local_ii,macro_scope_10_local_jj,macro_scope_10_local_kk, &
+  & primitiveMap(v),block)
   if (v==QEINT) stencil(macro_scope_10_local_s)=stencil(macro_scope_10_local_s)*state(macro_scope_10_local_ii, &
-  & macro_scope_10_local_jj,primitiveMap(QRHO),block)
+  & macro_scope_10_local_jj,macro_scope_10_local_kk,primitiveMap(QRHO),block)
 end do
 exit macro_scope_10
 end do macro_scope_10
@@ -137,20 +146,21 @@ if ((qp-(stencil(0)))*((stencil(0))-qm)<=0._rk) then
 end if
 exit macro_scope_14
 end do macro_scope_14
-          minus(i,j,v,block)=qm; plus(i,j,v,block)=qp
+          minus(i,j,k,v,block)=qm; plus(i,j,k,v,block)=qp
         end do
       end do
     end do
       end do
+      end do
     !$omp end target teams distribute parallel do
   end subroutine
 
-  subroutine faces(state,minus,plus,flux,nx,ny,nb,ng,lower,upper,params,d,error)
+  subroutine faces(state,minus,plus,flux,nx,ny,nz,nb,ng,lower,upper,params,d,error)
 use, intrinsic :: ieee_arithmetic, only: ieee_is_finite
-    integer,intent(in)::nx,ny,nb,ng,lower(2),upper(2),d
-    real(rk),intent(in)::state(1-ng:nx+ng,1-ng:ny+ng,9,nb),minus(1-ng:nx+ng,1-ng:ny+ng,7,nb),plus(1-ng:nx+ng, &
-  & 1-ng:ny+ng,7,nb)
-    real(rk),intent(inout)::flux(1-ng:nx+ng+1,1-ng:ny+ng+1,5,2,nb)
+    integer,intent(in)::nx,ny,nz,nb,ng,lower(3),upper(3),d
+    real(rk),intent(in)::state(1-ng:nx+ng,1-ng:ny+ng,1-(NDIM-2)*ng:nz+(NDIM-2)*ng,9,nb),minus(1-ng:nx+ng,1-ng:ny+ng, &
+  & 1-(NDIM-2)*ng:nz+(NDIM-2)*ng,7,nb),plus(1-ng:nx+ng,1-ng:ny+ng,1-(NDIM-2)*ng:nz+(NDIM-2)*ng,7,nb)
+    real(rk),intent(inout)::flux(1-ng:nx+ng+1,1-ng:ny+ng+1,1-(NDIM-2)*ng:nz+(NDIM-2)*ng+(NDIM-2),5,NDIM,nb)
     type(hydro_parameters),intent(in)::params
     integer,intent(out)::error
     integer::inputMap(7),outputMap(5),shockVariable,e(3)
@@ -174,7 +184,7 @@ integer :: macro_scope_41_local_v
     e=0; e(d)=1
     inputMap=primitiveMap; outputMap=conservedMap; shockVariable=9
     error=0
-!$omp target teams distribute parallel do collapse(3) map(alloc:state,minus,plus,flux) &
+!$omp target teams distribute parallel do collapse(4) map(alloc:state,minus,plus,flux) &
 !$omp& private(i,block,j) &
 !$omp& private(k,status,ql) &
 !$omp& private(qr,ul,ur) &
@@ -192,14 +202,15 @@ integer :: macro_scope_41_local_v
 !$omp& private(macro_scope_34_local_v,macro_scope_36_local_v,macro_scope_41_local_v) &
 !$omp& reduction(max:error)
     do block=1,nb
+      do k=lower(3),upper(3)+e(3)
       do j=lower(2),upper(2)+e(2)
       do i=lower(1),upper(1)+e(1)
-        k=1; status=HY_OK
+        status=HY_OK
         cell_work: do
 macro_scope_15: do
 do macro_scope_15_local_v=1,7
-  ql(macro_scope_15_local_v)=plus(i-e(1),j-e(2),macro_scope_15_local_v,block)
-  qr(macro_scope_15_local_v)=minus(i,j,macro_scope_15_local_v,block)
+  ql(macro_scope_15_local_v)=plus(i-e(1),j-e(2),k-e(3),macro_scope_15_local_v,block)
+  qr(macro_scope_15_local_v)=minus(i,j,k,macro_scope_15_local_v,block)
 end do
 exit macro_scope_15
 end do macro_scope_15
@@ -269,8 +280,8 @@ end do macro_scope_24
               inShock=.false.
               if (params%hybrid .and. params%shock_marker_present) then
 macro_scope_25: do
-inShock=(state(i,j,shockVariable,block)/=0._rk .or. &
-state(i-e(1),j-e(2),shockVariable,block)/=0._rk)
+inShock=(state(i,j,k,shockVariable,block)/=0._rk .or. &
+state(i-e(1),j-e(2),k-e(3),shockVariable,block)/=0._rk)
 exit macro_scope_25
 end do macro_scope_25
               end if
@@ -360,14 +371,15 @@ macro_scope_33: do
 if (params%viscosity==0._rk) exit macro_scope_33
 macro_scope_34: do
 do macro_scope_34_local_v=1,7
-  macro_scope_33_local_ql(macro_scope_34_local_v)=state((i-e(1)),(j-e(2)),inputMap(macro_scope_34_local_v),block)
+  macro_scope_33_local_ql(macro_scope_34_local_v)=state((i-e(1)),(j-e(2)),(k-e(3)),inputMap(macro_scope_34_local_v), &
+  & block)
 end do
 macro_scope_33_local_ql(QEINT)=macro_scope_33_local_ql(QRHO)*macro_scope_33_local_ql(QEINT)
 exit macro_scope_34
 end do macro_scope_34
 macro_scope_36: do
 do macro_scope_36_local_v=1,7
-  macro_scope_33_local_qr(macro_scope_36_local_v)=state(i,j,inputMap(macro_scope_36_local_v),block)
+  macro_scope_33_local_qr(macro_scope_36_local_v)=state(i,j,k,inputMap(macro_scope_36_local_v),block)
 end do
 macro_scope_33_local_qr(QEINT)=macro_scope_33_local_qr(QRHO)*macro_scope_33_local_qr(QEINT)
 exit macro_scope_36
@@ -398,7 +410,7 @@ end do macro_scope_33
             end if
 macro_scope_41: do
 do macro_scope_41_local_v=1,5
-  flux(i,j,outputMap(macro_scope_41_local_v),d,block)=f(macro_scope_41_local_v)
+  flux(i,j,k,outputMap(macro_scope_41_local_v),d,block)=f(macro_scope_41_local_v)
 end do
 exit macro_scope_41
 end do macro_scope_41
@@ -408,18 +420,19 @@ end do macro_scope_41
       end do
     end do
       end do
+      end do
     !$omp end target teams distribute parallel do
   end subroutine
 
-  subroutine update(reference,state,flux,nx,ny,nb,ng,lower,upper,dx,dy,dt,coeff,densityFloor,energyFloor,error)
+  subroutine update(reference,state,flux,nx,ny,nz,nb,ng,lower,upper,dx,dy,dz,dt,coeff,densityFloor,energyFloor,error)
 
-    integer,intent(in)::nx,ny,nb,ng,lower(2),upper(2)
+    integer,intent(in)::nx,ny,nz,nb,ng,lower(3),upper(3)
     real(rk)::spacing(3)
-    real(rk),intent(in)::reference(1-ng:nx+ng,1-ng:ny+ng,9,nb),flux(1-ng:nx+ng+1,1-ng:ny+ng+1,5,2,nb),dx,dy,dt,coeff( &
-  & 3),densityFloor,energyFloor
-    real(rk),intent(inout)::state(1-ng:nx+ng,1-ng:ny+ng,9,nb)
+    real(rk),intent(in)::reference(1-ng:nx+ng,1-ng:ny+ng,1-(NDIM-2)*ng:nz+(NDIM-2)*ng,9,nb),flux(1-ng:nx+ng+1, &
+  & 1-ng:ny+ng+1,1-(NDIM-2)*ng:nz+(NDIM-2)*ng+(NDIM-2),5,NDIM,nb),dx,dy,dz,dt,coeff(3),densityFloor,energyFloor
+    real(rk),intent(inout)::state(1-ng:nx+ng,1-ng:ny+ng,1-(NDIM-2)*ng:nz+(NDIM-2)*ng,9,nb)
     integer,intent(out)::error
-    integer::i,j,block,v
+    integer::i,j,k,block,v
     real(rk)::u0(5),us(5),source(5),divergence(5),updated(5),rho,velocity(3),totalEnergy,internalEnergy
 integer :: macro_scope_43_local_d
 real(rk) :: macro_scope_43_local_rho
@@ -428,52 +441,53 @@ real(rk) :: macro_scope_47_local_rho
 integer :: macro_scope_51_local_v
 integer :: macro_scope_60_local_d
 
-    spacing=[dx,dy,1._rk]
+    spacing=[dx,dy,dz]
     error=0
-!$omp target teams distribute parallel do collapse(3) map(alloc:reference,state,flux) &
-!$omp& private(i,j,block) &
-!$omp& private(v,u0,us) &
-!$omp& private(source,divergence,updated) &
-!$omp& private(rho,velocity,totalEnergy) &
-!$omp& private(internalEnergy,macro_scope_43_local_d,macro_scope_43_local_rho) &
-!$omp& private(macro_scope_47_local_d,macro_scope_47_local_rho,macro_scope_51_local_v) &
-!$omp& private(macro_scope_60_local_d) &
+!$omp target teams distribute parallel do collapse(4) map(alloc:reference,state,flux) &
+!$omp& private(i,j,k) &
+!$omp& private(block,v,u0) &
+!$omp& private(us,source,divergence) &
+!$omp& private(updated,rho,velocity) &
+!$omp& private(totalEnergy,internalEnergy,macro_scope_43_local_d) &
+!$omp& private(macro_scope_43_local_rho,macro_scope_47_local_d,macro_scope_47_local_rho) &
+!$omp& private(macro_scope_51_local_v,macro_scope_60_local_d) &
 !$omp& reduction(max:error)
     do block=1,nb
+      do k=lower(3),upper(3)
       do j=lower(2),upper(2)
       do i=lower(1),upper(1)
 macro_scope_43: do
-macro_scope_43_local_rho=reference(i,j,updateMap(1),block)
+macro_scope_43_local_rho=reference(i,j,k,updateMap(1),block)
 u0(1)=macro_scope_43_local_rho
 do macro_scope_43_local_d=1,3
-  u0(1+macro_scope_43_local_d)=macro_scope_43_local_rho*reference(i,j,updateMap(1+macro_scope_43_local_d),block)
+  u0(1+macro_scope_43_local_d)=macro_scope_43_local_rho*reference(i,j,k,updateMap(1+macro_scope_43_local_d),block)
 end do
-u0(5)=macro_scope_43_local_rho*reference(i,j,updateMap(5),block)
+u0(5)=macro_scope_43_local_rho*reference(i,j,k,updateMap(5),block)
 exit macro_scope_43
 end do macro_scope_43
 macro_scope_47: do
-macro_scope_47_local_rho=state(i,j,updateMap(1),block)
+macro_scope_47_local_rho=state(i,j,k,updateMap(1),block)
 us(1)=macro_scope_47_local_rho
 do macro_scope_47_local_d=1,3
-  us(1+macro_scope_47_local_d)=macro_scope_47_local_rho*state(i,j,updateMap(1+macro_scope_47_local_d),block)
+  us(1+macro_scope_47_local_d)=macro_scope_47_local_rho*state(i,j,k,updateMap(1+macro_scope_47_local_d),block)
 end do
-us(5)=macro_scope_47_local_rho*state(i,j,updateMap(5),block)
+us(5)=macro_scope_47_local_rho*state(i,j,k,updateMap(5),block)
 exit macro_scope_47
 end do macro_scope_47
         source=0
 macro_scope_51: do
 do macro_scope_51_local_v=1,5
-  divergence(macro_scope_51_local_v)=(flux(i+1,j,conservedMap(macro_scope_51_local_v),1,block) - &
-                 flux(i,j,conservedMap(macro_scope_51_local_v),1,block))/spacing(1)
-  if ((2)>1) then
-    divergence(macro_scope_51_local_v)=divergence(macro_scope_51_local_v)+(flux(i,j+1,conservedMap( &
+  divergence(macro_scope_51_local_v)=(flux(i+1,j,k,conservedMap(macro_scope_51_local_v),1,block) - &
+                 flux(i,j,k,conservedMap(macro_scope_51_local_v),1,block))/spacing(1)
+  if (NDIM>1) then
+    divergence(macro_scope_51_local_v)=divergence(macro_scope_51_local_v)+(flux(i,j+1,k,conservedMap( &
   & macro_scope_51_local_v),2,block) - &
-                                flux(i,j,conservedMap(macro_scope_51_local_v),2,block))/spacing(2)
+                                flux(i,j,k,conservedMap(macro_scope_51_local_v),2,block))/spacing(2)
   end if
-  if ((2)>2) then
-    divergence(macro_scope_51_local_v)=divergence(macro_scope_51_local_v)+(flux(i,j,conservedMap( &
+  if (NDIM>2) then
+    divergence(macro_scope_51_local_v)=divergence(macro_scope_51_local_v)+(flux(i,j,k+1,conservedMap( &
   & macro_scope_51_local_v),3,block) - &
-                                flux(i,j,conservedMap(macro_scope_51_local_v),3,block))/spacing(3)
+                                flux(i,j,k,conservedMap(macro_scope_51_local_v),3,block))/spacing(3)
   end if
 end do
 exit macro_scope_51
@@ -490,17 +504,18 @@ internalEnergy=max(energyFloor,totalEnergy-0.5_rk*sum(velocity**2))
 exit macro_scope_59
 end do macro_scope_59
 macro_scope_60: do
-state(i,j,updateMap(1),block)=rho
+state(i,j,k,updateMap(1),block)=rho
 do macro_scope_60_local_d=1,3
-  state(i,j,updateMap(1+macro_scope_60_local_d),block)=velocity(macro_scope_60_local_d)
+  state(i,j,k,updateMap(1+macro_scope_60_local_d),block)=velocity(macro_scope_60_local_d)
 end do
-state(i,j,updateMap(5),block)=totalEnergy
-state(i,j,updateMap(6),block)=internalEnergy
+state(i,j,k,updateMap(5),block)=totalEnergy
+state(i,j,k,updateMap(6),block)=internalEnergy
 exit macro_scope_60
 end do macro_scope_60
         if (.not.all(ieee_is_finite(updated))) error=max(error,HY_BAD_STATE)
       end do
     end do
+      end do
       end do
     !$omp end target teams distribute parallel do
   end subroutine

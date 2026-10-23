@@ -1,3 +1,4 @@
+#include "Simulation.h"
 ! One launch covers all blocks; arithmetic helpers are imported unchanged from NewImpl.
 module hy_gpu_amr_kernels
   use hy_gpu_amr_types
@@ -8,64 +9,68 @@ module hy_gpu_amr_kernels
   integer, parameter :: primitiveMap(7)=[1,2,3,4,5,6,7],acousticMap(6)=[1,2,3,4,5,6]
   integer, parameter :: updateMap(6)=[1,2,3,4,8,7],conservedMap(5)=[1,2,3,4,5],xOffset(3)=[1,0,0]
 contains
-  subroutine flatten(state,flat,nx,ny,nb,ng,lower,upper,params,error)
+  subroutine flatten(state,flat,nx,ny,nz,nb,ng,lower,upper,params,error)
     !$macro_imports
-    integer,intent(in):: nx,ny,nb,ng,lower(2),upper(2)
-    real(rk),intent(in)::state(1-ng:nx+ng,1-ng:ny+ng,9,nb)
-    real(rk),intent(inout)::flat(1-ng:nx+ng,1-ng:ny+ng,nb)
+    integer,intent(in):: nx,ny,nz,nb,ng,lower(3),upper(3)
+    real(rk),intent(in)::state(1-ng:nx+ng,1-ng:ny+ng,1-(NDIM-2)*ng:nz+(NDIM-2)*ng,9,nb)
+    real(rk),intent(inout)::flat(1-ng:nx+ng,1-ng:ny+ng,1-(NDIM-2)*ng:nz+(NDIM-2)*ng,nb)
     type(hydro_parameters),intent(in)::params
     integer,intent(out)::error
 ! PRIVATE_BEGIN
-    integer::i,j,block,status
+    integer::i,j,k,block,status
     real(rk)::f
     !$macro_declarations
 ! PRIVATE_END
     do block=1,nb
+      do k=lower(3)-(NDIM-2),upper(3)+(NDIM-2)
       do j=lower(2)-1,upper(2)+1
       do i=lower(1)-1,upper(1)+1
-        @hy_flatteningAtCell(state,primitiveMap,block,i,j,1,2,params,f,status)@
+        @hy_flatteningAtCell(state,primitiveMap,block,i,j,k,NDIM,params,f,status)@
         error=max(error,status)
-        flat(i,j,block)=f
+        flat(i,j,k,block)=f
       end do
     end do
+      end do
       end do
     !$omp end target teams distribute parallel do
   end subroutine
 
-  subroutine reconstruct(state,flat,minus,plus,nx,ny,nb,ng,lower,upper,params,d,error)
+  subroutine reconstruct(state,flat,minus,plus,nx,ny,nz,nb,ng,lower,upper,params,d,error)
     !$macro_imports
-    integer,intent(in)::nx,ny,nb,ng,lower(2),upper(2),d
-    real(rk),intent(in)::state(1-ng:nx+ng,1-ng:ny+ng,9,nb),flat(1-ng:nx+ng,1-ng:ny+ng,nb)
-    real(rk),intent(inout)::minus(1-ng:nx+ng,1-ng:ny+ng,7,nb),plus(1-ng:nx+ng,1-ng:ny+ng,7,nb)
+    integer,intent(in)::nx,ny,nz,nb,ng,lower(3),upper(3),d
+    real(rk),intent(in)::state(1-ng:nx+ng,1-ng:ny+ng,1-(NDIM-2)*ng:nz+(NDIM-2)*ng,9,nb),flat(1-ng:nx+ng,1-ng:ny+ng,1-(NDIM-2)*ng:nz+(NDIM-2)*ng,nb)
+    real(rk),intent(inout)::minus(1-ng:nx+ng,1-ng:ny+ng,1-(NDIM-2)*ng:nz+(NDIM-2)*ng,7,nb),plus(1-ng:nx+ng,1-ng:ny+ng,1-(NDIM-2)*ng:nz+(NDIM-2)*ng,7,nb)
     integer::e(3)
     type(hydro_parameters),intent(in)::params
     integer,intent(out)::error
 ! PRIVATE_BEGIN
-    integer::i,j,block,v
+    integer::i,j,k,block,v
     real(rk)::stencil(-2:2),cm(3),cp(3),wm(3),wp(3),qm,qp,f
     !$macro_declarations
 ! PRIVATE_END
     do block=1,nb
+      do k=lower(3)-e(3),upper(3)+e(3)
       do j=lower(2)-e(2),upper(2)+e(2)
       do i=lower(1)-e(1),upper(1)+e(1)
-        f=flat(i,j,block)
+        f=flat(i,j,k,block)
         do v=1,7
-          @hy_gatherStencil(state,primitiveMap,block,i,j,1,e,v,stencil)@
+          @hy_gatherStencil(state,primitiveMap,block,i,j,k,e,v,stencil)@
           @hy_wenoZCandidatesAndWeights(stencil,params%weno_epsilon,cm,cp,wm,wp)@
           @hy_finishReconstruction(stencil(0),f,cm,cp,wm,wp,qm,qp)@
-          minus(i,j,v,block)=qm; plus(i,j,v,block)=qp
+          minus(i,j,k,v,block)=qm; plus(i,j,k,v,block)=qp
         end do
       end do
     end do
       end do
+      end do
     !$omp end target teams distribute parallel do
   end subroutine
 
-  subroutine faces(state,minus,plus,flux,nx,ny,nb,ng,lower,upper,params,d,error)
+  subroutine faces(state,minus,plus,flux,nx,ny,nz,nb,ng,lower,upper,params,d,error)
     !$macro_imports
-    integer,intent(in)::nx,ny,nb,ng,lower(2),upper(2),d
-    real(rk),intent(in)::state(1-ng:nx+ng,1-ng:ny+ng,9,nb),minus(1-ng:nx+ng,1-ng:ny+ng,7,nb),plus(1-ng:nx+ng,1-ng:ny+ng,7,nb)
-    real(rk),intent(inout)::flux(1-ng:nx+ng+1,1-ng:ny+ng+1,5,2,nb)
+    integer,intent(in)::nx,ny,nz,nb,ng,lower(3),upper(3),d
+    real(rk),intent(in)::state(1-ng:nx+ng,1-ng:ny+ng,1-(NDIM-2)*ng:nz+(NDIM-2)*ng,9,nb),minus(1-ng:nx+ng,1-ng:ny+ng,1-(NDIM-2)*ng:nz+(NDIM-2)*ng,7,nb),plus(1-ng:nx+ng,1-ng:ny+ng,1-(NDIM-2)*ng:nz+(NDIM-2)*ng,7,nb)
+    real(rk),intent(inout)::flux(1-ng:nx+ng+1,1-ng:ny+ng+1,1-(NDIM-2)*ng:nz+(NDIM-2)*ng+(NDIM-2),5,NDIM,nb)
     type(hydro_parameters),intent(in)::params
     integer,intent(out)::error
     integer::inputMap(7),outputMap(5),shockVariable,e(3)
@@ -76,9 +81,10 @@ contains
     !$macro_declarations
 ! PRIVATE_END
     do block=1,nb
+      do k=lower(3),upper(3)+e(3)
       do j=lower(2),upper(2)+e(2)
       do i=lower(1),upper(1)+e(1)
-        k=1; status=HY_OK
+        status=HY_OK
         cell_work: do
           ! INSERT_REFERENCE_FACE_BODY
           exit cell_work
@@ -87,34 +93,37 @@ contains
       end do
     end do
       end do
+      end do
     !$omp end target teams distribute parallel do
   end subroutine
 
-  subroutine update(reference,state,flux,nx,ny,nb,ng,lower,upper,dx,dy,dt,coeff,densityFloor,energyFloor,error)
+  subroutine update(reference,state,flux,nx,ny,nz,nb,ng,lower,upper,dx,dy,dz,dt,coeff,densityFloor,energyFloor,error)
     !$macro_imports
-    integer,intent(in)::nx,ny,nb,ng,lower(2),upper(2)
+    integer,intent(in)::nx,ny,nz,nb,ng,lower(3),upper(3)
     real(rk)::spacing(3)
-    real(rk),intent(in)::reference(1-ng:nx+ng,1-ng:ny+ng,9,nb),flux(1-ng:nx+ng+1,1-ng:ny+ng+1,5,2,nb),dx,dy,dt,coeff(3),densityFloor,energyFloor
-    real(rk),intent(inout)::state(1-ng:nx+ng,1-ng:ny+ng,9,nb)
+    real(rk),intent(in)::reference(1-ng:nx+ng,1-ng:ny+ng,1-(NDIM-2)*ng:nz+(NDIM-2)*ng,9,nb),flux(1-ng:nx+ng+1,1-ng:ny+ng+1,1-(NDIM-2)*ng:nz+(NDIM-2)*ng+(NDIM-2),5,NDIM,nb),dx,dy,dz,dt,coeff(3),densityFloor,energyFloor
+    real(rk),intent(inout)::state(1-ng:nx+ng,1-ng:ny+ng,1-(NDIM-2)*ng:nz+(NDIM-2)*ng,9,nb)
     integer,intent(out)::error
 ! PRIVATE_BEGIN
-    integer::i,j,block,v
+    integer::i,j,k,block,v
     real(rk)::u0(5),us(5),source(5),divergence(5),updated(5),rho,velocity(3),totalEnergy,internalEnergy
     !$macro_declarations
 ! PRIVATE_END
     do block=1,nb
+      do k=lower(3),upper(3)
       do j=lower(2),upper(2)
       do i=lower(1),upper(1)
-        @hy_loadUpdateConservative(reference,updateMap,block,i,j,1,u0)@
-        @hy_loadUpdateConservative(state,updateMap,block,i,j,1,us)@
+        @hy_loadUpdateConservative(reference,updateMap,block,i,j,k,u0)@
+        @hy_loadUpdateConservative(state,updateMap,block,i,j,k,us)@
         source=0
-        @hy_updateFluxDivergence(flux,flux,flux,conservedMap,block,i,j,1,2,spacing,divergence)@
+        @hy_updateFluxDivergence(flux,flux,flux,conservedMap,block,i,j,k,NDIM,spacing,divergence)@
         @hy_combineUpdate(u0,us,source,divergence,coeff,coeff(3)*dt,updated)@
         @hy_recoverUpdatedHydro(updated,densityFloor,energyFloor,rho,velocity,totalEnergy,internalEnergy)@
-        @hy_storeUpdatedHydro(state,updateMap,block,i,j,1,rho,velocity,totalEnergy,internalEnergy)@
+        @hy_storeUpdatedHydro(state,updateMap,block,i,j,k,rho,velocity,totalEnergy,internalEnergy)@
         if (.not.all(ieee_is_finite(updated))) error=max(error,HY_BAD_STATE)
       end do
     end do
+      end do
       end do
     !$omp end target teams distribute parallel do
   end subroutine

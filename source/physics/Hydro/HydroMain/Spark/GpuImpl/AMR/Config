@@ -1,4 +1,4 @@
-# Batched GPU Hydro for 2D Cartesian, telescoping RK2, ordinary AMR reflux.
+# Batched GPU Hydro for 2D/3D Cartesian, telescoping RK2, ordinary AMR reflux.
 PPDEFINE HY_GPU_AMR
 REQUIRES Grid/GridMain/AMR
 REQUIRES physics/Eos/EosMain/Gamma
