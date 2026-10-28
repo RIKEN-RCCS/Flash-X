@@ -41,7 +41,6 @@
 !! @param loGC            Lower indices including guard cells
 !<
 
-!!Reorder(4): starState, tmpState, fl[xyz]
 !!VARIANTS(GPU): hy_rk_updateSoln, Driver_abort
 
 subroutine hy_rk_updateSoln (stage, starState, tmpState, &
@@ -70,8 +69,8 @@ subroutine hy_rk_updateSoln (stage, starState, tmpState, &
 
   integer, intent(IN) :: stage, lo(3), loGC(3)
 
-  real, dimension(1:, loGC(1):, loGC(2):, loGC(3):), intent(IN OUT) :: starState
-  real, dimension(1:, loGC(1):, loGC(2):, loGC(3):), intent(IN) :: flx, fly, flz
+  real, @M dim4gc, intent(IN OUT) :: starState
+  real, @M dim4gc, intent(IN) :: flx, fly, flz
   ! lower bounds for tmpState are different between telescoping and non-telescoping
   real, @M hy_tmpState_dimension, intent(IN) :: tmpState
   real, dimension(1:, loGC(1):, loGC(2):, loGC(3):), intent(IN) :: grav
@@ -122,8 +121,8 @@ subroutine hy_rk_updateSoln (stage, starState, tmpState, &
   do k = limits(LOW,KAXIS,stage), limits(HIGH,KAXIS,stage)
      do j = limits(LOW,JAXIS,stage), limits(HIGH,JAXIS,stage)
         do i = limits(LOW,IAXIS,stage), limits(HIGH,IAXIS,stage)
-           V0(1:NUNK_VARS) = tmpState(1:NUNK_VARS, i, j, k)
-           Vstar(1:NUNK_VARS) = starState(1:NUNK_VARS, i, j, k)
+           V0(1:NUNK_VARS) = tmpState(@M blkrange(1,NUNK_VARS,i,j,k))
+           Vstar(1:NUNK_VARS) = starState(@M blkrange(1,NUNK_VARS,i,j,k))
            U0(HY_MASS)            = V0(DENS_VAR)
            U0(HY_XMOM:HY_ZMOM)    = V0(DENS_VAR)*V0(VELX_VAR:VELZ_VAR)
            U0(HY_ENER)            = V0(DENS_VAR)*V0(ENER_VAR)
@@ -161,11 +160,11 @@ subroutine hy_rk_updateSoln (stage, starState, tmpState, &
 
            ! Now update conserved vector with flux gradients
            Ustar = hy_coeffArray(stage, 1)*U0 + hy_coeffArray(stage, 2)*Ustar + hy_coeffArray(stage, 3)*( &
-                -dt/dx*(facPx*flx(:, i+1, j, k) - facMx*flx(:, i, j, k)) &
+                -dt/dx*(facPx*flx(@M blkalloff(i,+1,j,+0,k,+0)) - facMx*flx(@M blkall(i,j,k))) &
 #if NDIM > 1
-                -dt/dy*(facPy*fly(:, i, j+1, k) - facMy*fly(:, i, j, k)) &
+                -dt/dy*(facPy*fly(@M blkalloff(i,+0,j,+1,k,+0)) - facMy*fly(@M blkall(i,j,k))) &
 #if NDIM ==3
-                -dt/dz*(facPz*flz(:, i, j, k+1) - facMz*flz(:, i, j, k)) &
+                -dt/dz*(facPz*flz(@M blkalloff(i,+0,j,+0,k,+1)) - facMz*flz(@M blkall(i,j,k))) &
 #endif
 #endif
                 +dt*Stot)
@@ -197,7 +196,7 @@ subroutine hy_rk_updateSoln (stage, starState, tmpState, &
                 + hy_coeffArray(stage, 3)*dt*(V0(GPOT_VAR) - V0(GPOL_VAR))/dtOld
 #endif
            ! save the solution in primitive form
-           starState(1:NUNK_VARS, i, j, k) = Vstar(1:NUNK_VARS)
+           starState(@M blkrange(1,NUNK_VARS,i,j,k)) = Vstar(1:NUNK_VARS)
         enddo !i
      enddo !j
   enddo !k

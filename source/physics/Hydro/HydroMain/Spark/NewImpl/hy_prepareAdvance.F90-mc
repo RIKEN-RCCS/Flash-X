@@ -1,0 +1,174 @@
+! Combined preparation + advance for a static uniform Cartesian block mesh.
+module newimpl_driver
+  use newimpl_hydro, only: cell_field,flux_field,hydro_workspace,hydro_parameters, &
+                          hy_getFaceFlux,HY_OK,HY_BAD_INPUT,HY_BAD_STATE
+  use newimpl_update, only: hy_updateSolution
+  use newimpl_shock, only: hy_shockDetect
+  use hydro_grid_contract
+  use, intrinsic :: ieee_arithmetic, only: ieee_is_finite
+  implicit none
+  private
+  integer, parameter :: rk=hydro_kind
+  public :: hy_prepareAdvance
+contains
+  subroutine hy_prepareAdvance(context,blocks,nDim,nVars,state,referenceState,stageState, &
+      soundWork,flux,integratedFlux,work,inputMap,updateMap,fluxMap,shockVariable, &
+      params,energyFloor,cfl,coefficients,fluxWeights,dtLimit,dtUsed,maxSignalSpeed, &
+      fillGuards,synchronizeFlux,reduceLimits,evaluateEos,status,failedBlock,failedCell,dtMinLoc)
+    !$macro_imports
+    class(hydro_grid_context_t), intent(inout) :: context
+    type(hydro_block_t), intent(in) :: blocks(:)
+    integer, intent(in) :: nDim,nVars,inputMap(7),updateMap(6),fluxMap(5),shockVariable
+    type(cell_field), intent(inout) :: state,referenceState,stageState,soundWork
+    type(flux_field), intent(inout) :: flux,integratedFlux
+    type(hydro_workspace), intent(inout) :: work
+    type(hydro_parameters), intent(in) :: params
+    real(rk), intent(in) :: energyFloor,cfl,coefficients(:,:),fluxWeights(:),dtLimit
+    real(rk), intent(out) :: dtUsed,maxSignalSpeed
+    procedure(grid_guard_interface) :: fillGuards
+    procedure(grid_flux_interface) :: synchronizeFlux
+    procedure(grid_reduce_interface) :: reduceLimits
+    procedure(hydro_eos_interface) :: evaluateEos
+    integer, intent(out) :: status,failedBlock,failedCell(3),dtMinLoc(5)
+    integer :: n,m,b,i,j,k,d,stage,nStages,innerLo(3),innerHi(3),loc(5),globalLoc(5),faceFailure(4)
+    integer :: acousticMap(6),unusedGravity(3),unusedPotential(2)
+    real(rk) :: localDt,localSpeed,globalDt,globalSpeed,sound,rate,speed,faceSpeed
+    !$macro_declarations
+    status=HY_BAD_INPUT; failedBlock=0; failedCell=0; dtMinLoc=0; dtUsed=0; maxSignalSpeed=0
+    if (nDim<1 .or. nDim>3 .or. nVars<1 .or. size(blocks)<1) return
+    nStages=size(fluxWeights)
+    if (nStages<1 .or. size(coefficients,1)/=3 .or. size(coefficients,2)/=nStages) return
+    if (.not.all(ieee_is_finite(coefficients)) .or. .not.all(ieee_is_finite(fluxWeights))) return
+    if (.not.all(ieee_is_finite([energyFloor,cfl,dtLimit]))) return
+    if (energyFloor<0._rk .or. cfl<=0._rk .or. dtLimit<=0._rk) return
+    if (any(inputMap<1) .or. any(inputMap>nVars) .or. any(updateMap<1) .or. any(updateMap>nVars)) return
+    if (any(fluxMap<1) .or. shockVariable>nVars) return
+    if (any(inputMap(1:4)/=updateMap(1:4)) .or. inputMap(7)/=updateMap(6)) return
+    if (any(inputMap==updateMap(5))) return
+    do n=1,7
+      do m=1,n-1
+        if (inputMap(n)==inputMap(m)) return
+      end do
+    end do
+    do n=1,6
+      do m=1,n-1
+        if (updateMap(n)==updateMap(m)) return
+      end do
+    end do
+    if (shockVariable>0) then
+      if (any(inputMap==shockVariable) .or. any(updateMap==shockVariable)) return
+    end if
+    do n=1,size(blocks)
+      b=blocks(n)%block; failedBlock=b
+      do m=1,n-1
+        if (blocks(m)%block==b) return
+      end do
+      if (b<1 .or. b>work%blocks .or. any(blocks(n)%hi<blocks(n)%lo)) return
+      do d=1,nDim
+        if (blocks(n)%guardLo(d)>blocks(n)%lo(d)-3 .or. blocks(n)%guardHi(d)<blocks(n)%hi(d)+3) return
+      end do
+      if (any(work%lo>blocks(n)%guardLo) .or. any(work%hi<blocks(n)%guardHi)) return
+      if (.not.all(ieee_is_finite(blocks(n)%spacing(1:nDim)))) return
+      if (any(blocks(n)%spacing(1:nDim)<=0._rk)) return
+      if (.not.ieee_is_finite(blocks(n)%volume) .or. blocks(n)%volume<=0._rk) return
+      if (.not.all(ieee_is_finite(blocks(n)%faceArea(1:nDim)))) return
+      do d=1,nDim
+        if (abs(blocks(n)%faceArea(d)*blocks(n)%spacing(d)/blocks(n)%volume-1._rk)>1.e-12_rk) return
+      end do
+    end do
+    ! Like prepBlock: EOS-consistent input, exchanged guards, shock flags, saved state.
+    failedBlock=0
+    call evaluateEos(context,state,blocks,inputMap,status)
+    if (status/=HY_OK) return
+    call fillGuards(context,state,blocks,nVars,status)
+    if (status/=HY_OK) return
+    do n=1,size(blocks)
+      b=blocks(n)%block; failedBlock=b
+      innerLo=blocks(n)%guardLo; innerHi=blocks(n)%guardHi
+      innerLo(1:nDim)=innerLo(1:nDim)+1; innerHi(1:nDim)=innerHi(1:nDim)-1
+      call hy_shockDetect(state,soundWork,b,blocks(n)%guardLo,blocks(n)%guardHi,innerLo,innerHi,nDim, &
+                          inputMap(1:6),shockVariable,params%tiny_state,0.5_rk,0.1_rk,status,failedCell)
+      if (status/=HY_OK) return
+    end do
+    failedBlock=0
+    ! Exchange the newly computed markers; they are retained through the RK stages.
+    call fillGuards(context,state,blocks,nVars,status)
+    if (status/=HY_OK) return
+    acousticMap=inputMap(1:6); localDt=dtLimit; localSpeed=0; loc=0
+    do n=1,size(blocks)
+      b=blocks(n)%block; failedBlock=b
+      do k=blocks(n)%lo(3),blocks(n)%hi(3)
+        do j=blocks(n)%lo(2),blocks(n)%hi(2)
+          do i=blocks(n)%lo(1),blocks(n)%hi(1)
+            failedCell=[i,j,k]
+            @hy_acousticSpeed(state,acousticMap,b,i,j,k,0._rk,sound,status)@
+            if (status/=HY_OK) return
+            @hy_uniformDtCellRate(state,acousticMap,b,i,j,k,nDim,blocks(n)%spacing,sound,rate,speed,status)@
+            if (status/=HY_OK) return
+            if (.not.all(ieee_is_finite([rate,speed]))) then
+              status=HY_BAD_STATE; return
+            end if
+            ! Reduce directly across all locally supplied blocks in descriptor order.
+            localSpeed=max(localSpeed,speed)
+            if (rate>0._rk) then
+              if (cfl/rate<localDt) then
+                localDt=cfl/rate; loc=[i,j,k,blocks(n)%level,blocks(n)%rank]
+              end if
+            end if
+          end do
+        end do
+      end do
+    end do
+    failedBlock=0; failedCell=0
+    call reduceLimits(context,localDt,localSpeed,loc,globalDt,globalSpeed,globalLoc,status)
+    if (status/=HY_OK) return
+    status=HY_BAD_INPUT
+    if (.not.all(ieee_is_finite([globalDt,globalSpeed]))) return
+    if (globalDt<=0._rk .or. globalDt>localDt .or. globalSpeed<localSpeed) return
+    dtUsed=globalDt; maxSignalSpeed=globalSpeed; dtMinLoc=globalLoc
+    do n=1,size(blocks)
+      b=blocks(n)%block
+      @hy_copyBlockState(state,referenceState,nVars,b,blocks(n)%guardLo,blocks(n)%guardHi)@
+      @hy_copyBlockState(state,stageState,nVars,b,blocks(n)%guardLo,blocks(n)%guardHi)@
+    end do
+    unusedGravity=0; unusedPotential=0
+    do stage=1,nStages
+      failedBlock=0
+      call fillGuards(context,stageState,blocks,nVars,status)
+      if (status/=HY_OK) return
+      ! Complete every block's fluxes before modifying any block's stage state.
+      do n=1,size(blocks)
+        b=blocks(n)%block; failedBlock=b
+        call hy_getFaceFlux(stageState,flux,b,blocks(n)%lo,blocks(n)%hi, &
+            blocks(n)%guardLo,blocks(n)%guardHi,nDim,inputMap,fluxMap,shockVariable,params,work, &
+            faceSpeed,status,faceFailure)
+        if (status/=HY_OK) then
+          failedCell=faceFailure(1:3); return
+        end if
+      end do
+      failedBlock=0
+      call synchronizeFlux(context,flux,blocks,fluxMap,nDim,status)
+      if (status/=HY_OK) return
+      do n=1,size(blocks)
+        b=blocks(n)%block; failedBlock=b
+        @hy_accumulateStageFlux(flux,integratedFlux,fluxMap,b,blocks(n)%lo,blocks(n)%hi,nDim, &
+                                blocks(n)%faceArea,fluxWeights(stage),dtUsed,stage==1)@
+        ! Gravity/potential disabled; referenceState is an unused gravity placeholder.
+        call hy_updateSolution(referenceState,stageState,flux,referenceState,b,blocks(n)%lo,blocks(n)%hi, &
+            nDim,blocks(n)%spacing,coefficients(:,stage),dtUsed,0._rk,updateMap,fluxMap, &
+            unusedGravity,unusedPotential,params%density_floor,energyFloor,.false.,.false.,status,failedCell)
+        if (status/=HY_OK) return
+      end do
+      failedBlock=0
+      call evaluateEos(context,stageState,blocks,inputMap,status)
+      if (status/=HY_OK) return
+    end do
+    call fillGuards(context,stageState,blocks,nVars,status)
+    if (status/=HY_OK) return
+    do n=1,size(blocks)
+      b=blocks(n)%block
+      @hy_copyBlockState(stageState,state,nVars,b,blocks(n)%guardLo,blocks(n)%guardHi)@
+    end do
+    status=HY_OK; failedBlock=0; failedCell=0
+  end subroutine
+end module

@@ -33,7 +33,7 @@
 !!
 !! DESCRIPTION
 !!
-!!  This routine computes the Riemann state values at cell interfaces using 
+!!  This routine computes the Riemann state values at cell interfaces using
 !!  the cell centered variables and store them in the scratch arrays.
 !!
 !!  A 2D Cartesian configuration of a single cell is shown:
@@ -63,7 +63,7 @@
 !!  blkLimitsGC - an array that holds the lower and upper indices of the section
 !!                of block with the guard cells
 !!  dt          - a current time step
-!!  del         - deltas in each direction 
+!!  del         - deltas in each direction
 !!  ogravX       - gravity component in x-direction at n step
 !!  ogravY       - gravity component in y-direction at n step
 !!  ogravZ       - gravity component in z-direction at n step
@@ -71,7 +71,7 @@
 !!  hy_SpcR,hy_SpcL,hy_SpcSig - Pointers for Species and mass scalar recon.
 !!  normalFieldUpdate - a logical switch to choose normal magnetic fields updates only
 !!                      (needed for MHD only)
-!!   
+!!
 !!***
 
 !!REORDER(4):U, V0, scrchFaceXPtr,scrchFaceYPtr,scrchFaceZPtr, B[xyz]
@@ -116,7 +116,7 @@ Subroutine hy_getRiemannState(tileDesc,U,blkLimits,loGC,hiGC,dt,del,&
                                    hy_eigenVector,        &
                                    hy_upwindTransverseFlux
   use Grid_interface,   ONLY : Grid_getCellCoords
-  use Grid_tile,        ONLY : Grid_tile_t 
+  use Grid_tile,        ONLY : Grid_tile_t
 
   implicit none
 
@@ -168,8 +168,8 @@ Subroutine hy_getRiemannState(tileDesc,U,blkLimits,loGC,hiGC,dt,del,&
 
   real :: Sp, dv1, dp1, dp2, presL,presR,hdt
 
-  real, dimension(loGC(IAXIS):hiGC(IAXIS)) :: xCenter  
-  real, dimension(loGC(JAXIS):hiGC(JAXIS)) :: yCenter  
+  real, dimension(loGC(IAXIS):hiGC(IAXIS)) :: xCenter
+  real, dimension(loGC(JAXIS):hiGC(JAXIS)) :: yCenter
 
   integer :: k2,k3,kGrav,kHydro,kUSM,order
   integer :: k4,im2,ip2,jm2,jp2,km2,kp2
@@ -178,7 +178,7 @@ Subroutine hy_getRiemannState(tileDesc,U,blkLimits,loGC,hiGC,dt,del,&
   integer :: velPhi, velTht, magPhi, magZ
   integer :: HY_velPhi, HY_velTht, H_magPhi, H_magZ
 
-  real :: Rinv, geoFac, eta, enth   
+  real :: Rinv, geoFac, eta, enth
   real :: sGeo_dens, sGeo_velx, sGeo_velp, sGeo_velt, sGeo_pres
   real :: sGeo_trans, sGeo_eint, sGeo_magz,sGeo_magp
 
@@ -217,7 +217,7 @@ Subroutine hy_getRiemannState(tileDesc,U,blkLimits,loGC,hiGC,dt,del,&
 
 
 
-  !! Set transverse flux interpolation order 
+  !! Set transverse flux interpolation order
   transOrder3D = 1
 
   !! index for gravity
@@ -239,26 +239,26 @@ Subroutine hy_getRiemannState(tileDesc,U,blkLimits,loGC,hiGC,dt,del,&
   k2=0
   k3=0
 #if NDIM == 1
-  i0   = blkLimits(LOW, IAXIS)
+  i0   = blkLimits(LOW,IAXIS)
   imax = blkLimits(HIGH,IAXIS)
   j0   = 3
   jmax =-1
   k0   = 3
   kmax =-1
 #elif NDIM == 2
-  i0   = blkLimits(LOW, IAXIS)
+  i0   = blkLimits(LOW,IAXIS)
   imax = blkLimits(HIGH,IAXIS)
-  j0   = blkLimits(LOW, JAXIS)
+  j0   = blkLimits(LOW,JAXIS)
   jmax = blkLimits(HIGH,JAXIS)
   k0   = 3
   kmax =-1
   k2=1
 #elif NDIM == 3
-  i0   = blkLimits(LOW, IAXIS)
+  i0   = blkLimits(LOW,IAXIS)
   imax = blkLimits(HIGH,IAXIS)
-  j0   = blkLimits(LOW, JAXIS)
+  j0   = blkLimits(LOW,JAXIS)
   jmax = blkLimits(HIGH,JAXIS)
-  k0   = blkLimits(LOW, KAXIS)
+  k0   = blkLimits(LOW,KAXIS)
   kmax = blkLimits(HIGH,KAXIS)
   k2=1
   k3=1
@@ -273,7 +273,7 @@ Subroutine hy_getRiemannState(tileDesc,U,blkLimits,loGC,hiGC,dt,del,&
 
 !!$  !Initialize geometric source terms
 !!$  sGeo_dens=0.
-!!$  sGeo_velx=0. 
+!!$  sGeo_velx=0.
 !!$  sGeo_velp=0.
 !!$  sGeo_pres=0.
 !!$  sGeo_trans=0.
@@ -298,7 +298,7 @@ Subroutine hy_getRiemannState(tileDesc,U,blkLimits,loGC,hiGC,dt,del,&
 
      dataSize(1:MDIM)=hiGC(1:MDIM)-loGC(1:MDIM)+1
      if (hy_geometry /= CARTESIAN) then
-        ! Grab cell x-coords for this block  
+        ! Grab cell x-coords for this block
         call Grid_getCellCoords(IAXIS, CENTER, tileDesc%level, &
                                 loGC, hiGC, xCenter)
 #if NDIM > 1
@@ -308,8 +308,8 @@ Subroutine hy_getRiemannState(tileDesc,U,blkLimits,loGC,hiGC,dt,del,&
 #endif
      endif
 
-     allocate( sig(HY_VARINUMMAX,NDIM,           loGC(IAXIS):hiGC(IAXIS),loGC(JAXIS):hiGC(JAXIS),loGC(KAXIS):hiGC(KAXIS)))
-     allocate( lambda(HY_WAVENUM,NDIM,           loGC(IAXIS):hiGC(IAXIS),loGC(JAXIS):hiGC(JAXIS),loGC(KAXIS):hiGC(KAXIS)))
+     allocate( sig(HY_VARINUMMAX,NDIM,loGC(IAXIS):hiGC(IAXIS),loGC(JAXIS):hiGC(JAXIS),loGC(KAXIS):hiGC(KAXIS)))
+     allocate( lambda(HY_WAVENUM,NDIM,loGC(IAXIS):hiGC(IAXIS),loGC(JAXIS):hiGC(JAXIS),loGC(KAXIS):hiGC(KAXIS)))
      allocate(leftEig(HY_VARINUM,HY_WAVENUM,NDIM,loGC(IAXIS):hiGC(IAXIS),loGC(JAXIS):hiGC(JAXIS),loGC(KAXIS):hiGC(KAXIS)))
      allocate(rghtEig(HY_VARINUM,HY_WAVENUM,NDIM,loGC(IAXIS):hiGC(IAXIS),loGC(JAXIS):hiGC(JAXIS),loGC(KAXIS):hiGC(KAXIS)))
   end if
@@ -344,16 +344,16 @@ Subroutine hy_getRiemannState(tileDesc,U,blkLimits,loGC,hiGC,dt,del,&
               !! We used to compute undivided divergence of velocity fields and (magneto)sonic speed
               !! and store local (magneto)sonic speeds for hybrid order. Now the latter are
               !! computed elsewhere.
-              DivU(i,j,k) = U(VELX_VAR,i+1,j,k)-U(VELX_VAR,i-1,j,k)
+              DivU(i+0,j+0,k+0) = U(VELX_VAR,i+1,j+0,k+0)-U(VELX_VAR,i-1,j+0,k+0)
               if (NDIM > 1) then
-                 DivU(i,j,k) = DivU(i,j,k) &
-                      +U(VELY_VAR,i,j+1,k)-U(VELY_VAR,i,j-1,k)
+                 DivU(i+0,j+0,k+0) = DivU(i+0,j+0,k+0) \
+                      +U(VELY_VAR,i+0,j+1,k+0)-U(VELY_VAR,i+0,j-1,k+0)
                  if (NDIM > 2) then
-                    DivU(i,j,k) = DivU(i,j,k) &
-                         +U(VELZ_VAR,i,j,k+1)-U(VELZ_VAR,i,j,k-1)
+                    DivU(i+0,j+0,k+0) = DivU(i+0,j+0,k+0) \
+                         +U(VELZ_VAR,i+0,j+0,k+1)-U(VELZ_VAR,i+0,j+0,k-1)
                  endif
               endif
-              DivU(i,j,k) = 0.5*DivU(i,j,k)
+              DivU(i+0,j+0,k+0) = 0.5*DivU(i+0,j+0,k+0)
 
            enddo ! do i-loop
         enddo ! do j-loop
@@ -377,25 +377,25 @@ Subroutine hy_getRiemannState(tileDesc,U,blkLimits,loGC,hiGC,dt,del,&
               do dir=1,NDIM
                  select case (dir)
                  case (DIR_X)
-                    dp1   = (U(PRES_VAR,i+1,j,k)-U(PRES_VAR,i-1,j,k))
-                    dp2   = (U(PRES_VAR,i+2,j,k)-U(PRES_VAR,i-2,j,k))
-                    dv1   =  U(VELX_VAR,i+1,j,k)-U(VELX_VAR,i-1,j,k)
-                    presL =  U(PRES_VAR,i-1,j,k)
-                    presR =  U(PRES_VAR,i+1,j,k)
+                    dp1   = (U(PRES_VAR,i+1,j+0,k+0)-U(PRES_VAR,i-1,j+0,k+0))
+                    dp2   = (U(PRES_VAR,i+2,j+0,k+0)-U(PRES_VAR,i-2,j+0,k+0))
+                    dv1   =  U(VELX_VAR,i+1,j+0,k+0)-U(VELX_VAR,i-1,j+0,k+0)
+                    presL =  U(PRES_VAR,i-1,j+0,k+0)
+                    presR =  U(PRES_VAR,i+1,j+0,k+0)
 #if NDIM > 1
                  case (DIR_Y)
-                    dp1   = (U(PRES_VAR,i,j+1,k)-U(PRES_VAR,i,j-1,k))
-                    dp2   = (U(PRES_VAR,i,j+2,k)-U(PRES_VAR,i,j-2,k))
-                    dv1   =  U(VELY_VAR,i,j+1,k)-U(VELY_VAR,i,j-1,k)
-                    presL =  U(PRES_VAR,i,j-1,k)
-                    presR =  U(PRES_VAR,i,j+1,k)
+                    dp1   = (U(PRES_VAR,i+0,j+1,k+0)-U(PRES_VAR,i+0,j-1,k+0))
+                    dp2   = (U(PRES_VAR,i+0,j+2,k+0)-U(PRES_VAR,i+0,j-2,k+0))
+                    dv1   =  U(VELY_VAR,i+0,j+1,k+0)-U(VELY_VAR,i+0,j-1,k+0)
+                    presL =  U(PRES_VAR,i+0,j-1,k+0)
+                    presR =  U(PRES_VAR,i+0,j+1,k+0)
 #if NDIM > 2
                  case (DIR_Z)
-                    dp1   = (U(PRES_VAR,i,j,k+1)-U(PRES_VAR,i,j,k-1))
-                    dp2   = (U(PRES_VAR,i,j,k+2)-U(PRES_VAR,i,j,k-2))
-                    dv1   =  U(VELZ_VAR,i,j,k+1)-U(VELZ_VAR,i,j,k-1)
-                    presL =  U(PRES_VAR,i,j,k-1)
-                    presR =  U(PRES_VAR,i,j,k+1)
+                    dp1   = (U(PRES_VAR,i+0,j+0,k+1)-U(PRES_VAR,i+0,j+0,k-1))
+                    dp2   = (U(PRES_VAR,i+0,j+0,k+2)-U(PRES_VAR,i+0,j+0,k-2))
+                    dv1   =  U(VELZ_VAR,i+0,j+0,k+1)-U(VELZ_VAR,i+0,j+0,k-1)
+                    presL =  U(PRES_VAR,i+0,j+0,k-1)
+                    presR =  U(PRES_VAR,i+0,j+0,k+1)
 #endif
 #endif
                  end select
@@ -406,9 +406,9 @@ Subroutine hy_getRiemannState(tileDesc,U,blkLimits,loGC,hiGC,dt,del,&
                     Sp = 0.
                  endif
 
-                 FlatTilde(dir,i,j,k) = max(0.0, min(1.0,10.0*Sp))
+                 FlatTilde(dir,i+0,j+0,k+0) = max(0.0, min(1.0,10.0*Sp))
                  if ((abs(dp1)/min(presL,presR) < 1./3.) .or. dv1 > 0. ) then
-                    FlatTilde(dir,i,j,k) = 0.
+                    FlatTilde(dir,i+0,j+0,k+0) = 0.
                  endif
 
               enddo
@@ -424,36 +424,36 @@ Subroutine hy_getRiemannState(tileDesc,U,blkLimits,loGC,hiGC,dt,del,&
 
                  select case (dir)
                  case (DIR_X)
-                    dp1   = (U(PRES_VAR,i+1,j,k)-U(PRES_VAR,i-1,j,k))
+                    dp1   = (U(PRES_VAR,i+1,j+0,k+0)-U(PRES_VAR,i-1,j+0,k+0))
 
                     if ( dp1 < 0.0 ) then
-                       FlatCoeff(dir,i,j,k) = max(FlatTilde(dir,i,j,k),FlatTilde(dir,i+1,j,k))
+                       FlatCoeff(dir,i+0,j+0,k+0) = max(FlatTilde(dir,i+0,j+0,k+0),FlatTilde(dir,i+1,j+0,k+0))
                     elseif (dp1 == 0.) then
-                       FlatCoeff(dir,i,j,k) = FlatTilde(dir,i,j,k)
+                       FlatCoeff(dir,i+0,j+0,k+0) = FlatTilde(dir,i+0,j+0,k+0)
                     else
-                       FlatCoeff(dir,i,j,k) = max(FlatTilde(dir,i,j,k),FlatTilde(dir,i-1,j,k))
+                       FlatCoeff(dir,i+0,j+0,k+0) = max(FlatTilde(dir,i+0,j+0,k+0),FlatTilde(dir,i-1,j+0,k+0))
                     endif
 #if NDIM > 1
                  case (DIR_Y)
-                    dp1   = (U(PRES_VAR,i,j+1,k)-U(PRES_VAR,i,j-1,k))
+                    dp1   = (U(PRES_VAR,i+0,j+1,k+0)-U(PRES_VAR,i+0,j-1,k+0))
 
                     if ( dp1 < 0.0 ) then
-                       FlatCoeff(dir,i,j,k) = max(FlatTilde(dir,i,j,k),FlatTilde(dir,i,j+1,k))
+                       FlatCoeff(dir,i+0,j+0,k+0) = max(FlatTilde(dir,i+0,j+0,k+0),FlatTilde(dir,i+0,j+1,k+0))
                     elseif (dp1 == 0.) then
-                       FlatCoeff(dir,i,j,k) = FlatTilde(dir,i,j,k)
+                       FlatCoeff(dir,i+0,j+0,k+0) = FlatTilde(dir,i+0,j+0,k+0)
                     else
-                       FlatCoeff(dir,i,j,k) = max(FlatTilde(dir,i,j,k),FlatTilde(dir,i,j-1,k))
+                       FlatCoeff(dir,i+0,j+0,k+0) = max(FlatTilde(dir,i+0,j+0,k+0),FlatTilde(dir,i+0,j-1,k+0))
                     endif
 #if NDIM > 2
                  case (DIR_Z)
-                    dp1   = (U(PRES_VAR,i,j,k+1)-U(PRES_VAR,i,j,k-1))
+                    dp1   = (U(PRES_VAR,i+0,j+0,k+1)-U(PRES_VAR,i+0,j+0,k-1))
 
                     if ( dp1 < 0.0 ) then
-                       FlatCoeff(dir,i,j,k) = max(FlatTilde(dir,i,j,k),FlatTilde(dir,i,j,k+1))
+                       FlatCoeff(dir,i+0,j+0,k+0) = max(FlatTilde(dir,i+0,j+0,k+0),FlatTilde(dir,i+0,j+0,k+1))
                     elseif (dp1 == 0.) then
-                       FlatCoeff(dir,i,j,k) = FlatTilde(dir,i,j,k)
+                       FlatCoeff(dir,i+0,j+0,k+0) = FlatTilde(dir,i+0,j+0,k+0)
                     else
-                       FlatCoeff(dir,i,j,k) = max(FlatTilde(dir,i,j,k),FlatTilde(dir,i,j,k-1))
+                       FlatCoeff(dir,i+0,j+0,k+0) = max(FlatTilde(dir,i+0,j+0,k+0),FlatTilde(dir,i+0,j+0,k-1))
                     endif
 #endif
 #endif
@@ -483,27 +483,27 @@ Subroutine hy_getRiemannState(tileDesc,U,blkLimits,loGC,hiGC,dt,del,&
 
         do j=j0-2-(k3*kUSM-kHydro)*k2,jmax+2+(k3*kUSM-kHydro)*k2
            do i=i0-2-(k3*kUSM-kHydro),imax+2+(k3*kUSM-kHydro)
-           ! Extra stencil is needed for 3D to correctly calculate transverse fluxes 
+           ! Extra stencil is needed for 3D to correctly calculate transverse fluxes
            !(i.e., cross derivatives in x,y, & z)
 !!$              print*,'RiemannSt loop:',i,j,' ...'
               !! save the cell center values for later use
               Vc(HY_DENS:HY_END_VARS-kGrav) = &
-                      (/U(DENS_VAR,i,j,k)&
-                       ,U(VELX_VAR:VELZ_VAR,i,j,k)&
-                       ,U(PRES_VAR,i,j,k)&
+                      (/U(DENS_VAR,i+0,j+0,k+0)&
+                       ,U(VELX_VAR:VELZ_VAR,i+0,j+0,k+0)&
+                       ,U(PRES_VAR,i+0,j+0,k+0)&
 #if defined(FLASH_USM_MHD) || defined(FLASH_UGLM_MHD)
-                       ,U(MAGX_VAR:MAGZ_VAR,i,j,k)&
+                       ,U(MAGX_VAR:MAGZ_VAR,i+0,j+0,k+0)&
 #endif
 #ifdef FLASH_UGLM_MHD
-                       ,U(GLMP_VAR,i,j,k) &
+                       ,U(GLMP_VAR,i+0,j+0,k+0) &
 #endif
-                       ,U(GAMC_VAR,i,j,k) &
-                       ,U(GAME_VAR,i,j,k) &
-                       ,U(EINT_VAR,i,j,k) &
+                       ,U(GAMC_VAR,i+0,j+0,k+0) &
+                       ,U(GAME_VAR,i+0,j+0,k+0) &
+                       ,U(EINT_VAR,i+0,j+0,k+0) &
 #ifdef FLASH_UHD_3T
-                       ,U(EELE_VAR,i,j,k) &
-                       ,U(EION_VAR,i,j,k) &
-                       ,U(ERAD_VAR,i,j,k) &
+                       ,U(EELE_VAR,i+0,j+0,k+0) &
+                       ,U(EION_VAR,i+0,j+0,k+0) &
+                       ,U(ERAD_VAR,i+0,j+0,k+0) &
 #endif
                        /)
 
@@ -513,7 +513,7 @@ Subroutine hy_getRiemannState(tileDesc,U,blkLimits,loGC,hiGC,dt,del,&
               !! Reduce order in fluid cell near solid boundary if defined:
               !! Reduce order of spatial reconstruction depending on the distance to the solid boundary
               if (order > 2) then
-!!!!! fix this                 
+!!!!! fix this
                  im2=max(loGC(IAXIS),i-2); ip2=min(hiGC(IAXIS),i+2)
 #if NDIM > 1
                  jm2=max(loGC(JAXIS),j-2); jp2=min(hiGC(JAXIS),j+2)
@@ -531,12 +531,12 @@ Subroutine hy_getRiemannState(tileDesc,U,blkLimits,loGC,hiGC,dt,del,&
                     order = 2
                  endif
               endif
-              if ((U(BDRY_VAR,i,j,k)*U(BDRY_VAR,i-1, j,   k   ) < 0.0) .or. &
-                  (U(BDRY_VAR,i,j,k)*U(BDRY_VAR,i+1, j,   k   ) < 0.0) .or. &
-                  (U(BDRY_VAR,i,j,k)*U(BDRY_VAR,i,   j-k2,k   ) < 0.0) .or. &
-                  (U(BDRY_VAR,i,j,k)*U(BDRY_VAR,i,   j+k2,k   ) < 0.0) .or. &
-                  (U(BDRY_VAR,i,j,k)*U(BDRY_VAR,i,   j,   k-k3) < 0.0) .or. &
-                  (U(BDRY_VAR,i,j,k)*U(BDRY_VAR,i,   j,   k+k3) < 0.0)) then
+              (U(BDRY_VAR,i+0,j+0,k+0)*U(BDRY_VAR,i-1,j+0,k+0) < 0.0) .or. &
+              (U(BDRY_VAR,i+0,j+0,k+0)*U(BDRY_VAR,i+1,j+0,k+0) < 0.0) .or. &
+              (U(BDRY_VAR,i+0,j+0,k+0)*U(BDRY_VAR,i+0,j-k2,k+0) < 0.0) .or. &
+              (U(BDRY_VAR,i+0,j+0,k+0)*U(BDRY_VAR,i+0,j+k2,k+0) < 0.0) .or. &
+              (U(BDRY_VAR,i+0,j+0,k+0)*U(BDRY_VAR,i+0,j+0,k-k3) < 0.0) .or. &
+              (U(BDRY_VAR,i+0,j+0,k+0)*U(BDRY_VAR,i+0,j+0,k+k3) < 0.0)) then
                  order = 1
                  lowerCflAtBdry = .TRUE.
               endif
@@ -545,53 +545,53 @@ Subroutine hy_getRiemannState(tileDesc,U,blkLimits,loGC,hiGC,dt,del,&
               ! that we cannot do all the proper transverse computations for this cell.
               if (hy_use3dFullCTU) then
                  if (maxval(U(BDRY_VAR,i-1:i+1,j-1:j+1,k-1:k+1)) > 0.) then
-                    if (maxval(U(BDRY_VAR,i      ,j-1:j+1,k-1:k+1)) > 0.) lowerCflAtBdry = .TRUE.
-                    if (maxval(U(BDRY_VAR,i-1:i+1,j      ,k-1:k+1)) > 0.) lowerCflAtBdry = .TRUE.
-                    if (maxval(U(BDRY_VAR,i-1:i+1,j-1:j+1,k      )) > 0.) lowerCflAtBdry = .TRUE.
+                    if (maxval(U(BDRY_VAR,i+0:i+0,j-1:j+1,k-1:k+1)) > 0.) lowerCflAtBdry = .TRUE.
+                    if (maxval(U(BDRY_VAR,i-1:i+1,j+0:j+0,k-1:k+1)) > 0.) lowerCflAtBdry = .TRUE.
+                    if (maxval(U(BDRY_VAR,i-1:i+1,j-1:j+1,k+0:k+0)) > 0.) lowerCflAtBdry = .TRUE.
                  end if
               end if
 #endif
 #endif
 
 #ifdef CFL_VAR
-              cellCfl = U(CFL_VAR,i,j,k)
+              cellCfl = U(CFL_VAR,i+0,j+0,k+0)
 #else
               cellCfl = hy_cfl
 #endif
               if (lowerCflAtBdry) cellCfl = min(cellCfl, hy_cflFallbackFactor / real(NDIM))
 
-              !! Flag for tranverse update 
+              !! Flag for tranverse update
               TransX_updateOnly = .false.
               TransY_updateOnly = .false.
               TransZ_updateOnly = .false.
 
               if (i > blkLimits(HIGH,IAXIS)+1 .or. &
-                   i < blkLimits(LOW, IAXIS)-1) then
+                   i < blkLimits(LOW,IAXIS)-1) then
                  TransX_updateOnly = .true.
               endif
               if (i > blkLimits(HIGH,IAXIS)+2*kUSM .or. &
-                   i < blkLimits(LOW, IAXIS)-2*kUSM) then
+                   i < blkLimits(LOW,IAXIS)-2*kUSM) then
                  TransY_updateOnly = .true.
                  TransZ_updateOnly = .true.
               endif
 #if NDIM > 1
               if (j > blkLimits(HIGH,JAXIS)+1 .or. &
-                   j < blkLimits(LOW, JAXIS)-1) then
+                   j < blkLimits(LOW,JAXIS)-1) then
                  TransY_updateOnly = .true.
               endif
               if (j > blkLimits(HIGH,JAXIS)+2*kUSM .or. &
-                   j < blkLimits(LOW, JAXIS)-2*kUSM) then
+                   j < blkLimits(LOW,JAXIS)-2*kUSM) then
                  TransX_updateOnly = .true.
                  TransZ_updateOnly = .true.
               endif
 
 #if NDIM > 2
-              if (k > blkLimits(HIGH,KAXIS)+1 .or. & 
-                   k < blkLimits(LOW, KAXIS)-1) then
+              if (k > blkLimits(HIGH,KAXIS)+1 .or. &
+                   k < blkLimits(LOW,KAXIS)-1) then
                  TransZ_updateOnly = .true.
               endif
-              if (k > blkLimits(HIGH,KAXIS)+2*kUSM .or. & 
-                   k < blkLimits(LOW, KAXIS)-2*kUSM) then
+              if (k > blkLimits(HIGH,KAXIS)+2*kUSM .or. &
+                   k < blkLimits(LOW,KAXIS)-2*kUSM) then
                  TransX_updateOnly = .true.
                  TransY_updateOnly = .true.
               endif
@@ -625,10 +625,10 @@ Subroutine hy_getRiemannState(tileDesc,U,blkLimits,loGC,hiGC,dt,del,&
                        TransY_updateOnly,      &
                        TransZ_updateOnly,      &
                        Wp,Wn,                  &
-                       sig    (  1,1,i,j,k),   &
-                       lambda (  1,1,i,j,k),   &
-                       leftEig(1,1,1,i,j,k),   &
-                       rghtEig(1,1,1,i,j,k),   &
+                       sig(1,1,i+0,j+0,k+0),   &
+                       lambda(1,1,i+0,j+0,k+0),   &
+                       leftEig(1,1,1,i+0,j+0,k+0),   &
+                       rghtEig(1,1,1,i+0,j+0,k+0),   &
                        cellCfl, &
                        hy_SpcR,hy_SpcL,hy_SpcSig)
                  else
@@ -641,10 +641,10 @@ Subroutine hy_getRiemannState(tileDesc,U,blkLimits,loGC,hiGC,dt,del,&
                        TransY_updateOnly,      &
                        TransZ_updateOnly,      &
                        Wp,Wn,                  &
-                       sig    (  1,1,i,j,k),   &
-                       lambda (  1,1,i,j,k),   &
-                       leftEig(1,1,1,i,j,k),   &
-                       rghtEig(1,1,1,i,j,k),   & 
+                       sig(1,1,i+0,j+0,k+0),   &
+                       lambda(1,1,i+0,j+0,k+0),   &
+                       leftEig(1,1,1,i+0,j+0,k+0),   &
+                       rghtEig(1,1,1,i+0,j+0,k+0),   &
                        cellCfl)
                  endif ! if(hy_fullSpecMsFluxHandling ...
 
@@ -659,7 +659,7 @@ Subroutine hy_getRiemannState(tileDesc,U,blkLimits,loGC,hiGC,dt,del,&
 
                  !Initialize geometric source terms
                  sGeo_dens = 0.
-                 sGeo_velx = 0. 
+                 sGeo_velx = 0.
                  sGeo_velp = 0.
                  sGeo_pres = 0.
                  sGeo_eint = 0.
@@ -697,39 +697,39 @@ Subroutine hy_getRiemannState(tileDesc,U,blkLimits,loGC,hiGC,dt,del,&
                     geoFac    = 2.*Rinv
                  end select
 
-                 cs  = sqrt(U(GAMC_VAR,i,j,k)*U(PRES_VAR,i,j,k)/U(DENS_VAR,i,j,k))
-                 eta = (abs(U(VELX_VAR,i,j,k)) + cs) * dt/del(DIR_X)
+                 cs  = sqrt(U(GAMC_VAR,i+0,j+0,k+0)*U(PRES_VAR,i+0,j+0,k+0)/U(DENS_VAR,i+0,j+0,k+0))
+                 eta = (abs(U(VELX_VAR,i+0,j+0,k+0)) + cs) * dt/del(DIR_X)
                  eta = (1.-eta) / (cs*dt*abs(geoFac))
                  eta = min(1.,eta)
                  !! comment this line not to use the axis hack
 !!$                 geoFac = eta * geoFac
                  !! end of the axis hack
-                 enth = U(EINT_VAR,i,j,k) + U(PRES_VAR,i,j,k)/U(DENS_VAR,i,j,k)
+                 enth = U(EINT_VAR,i+0,j+0,k+0) + U(PRES_VAR,i+0,j+0,k+0)/U(DENS_VAR,i+0,j+0,k+0)
 
                  !! right/left state source terms
-                 sGeo_dens = -U(DENS_VAR,i,j,k) * U(VELX_VAR,i,j,k) * geoFac !src[DN]
+                 sGeo_dens = -U(DENS_VAR,i+0,j+0,k+0) * U(VELX_VAR,i+0,j+0,k+0) * geoFac !src[DN]
 #if NDIM > 1
                  if (hy_geometry == SPHERICAL) then
                       sGeo_dens = sGeo_dens &
-                      -U(DENS_VAR,i,j,k)*U(velTht,i,j,k)*cos(yCenter(j))/sin(yCenter(j)) * 0.5*geoFac
-                      sGeo_velt = (U(velPhi,i,j,k)**2) * cos(yCenter(j))/sin(yCenter(j)) * 0.5*geoFac
+                      -U(DENS_VAR,i+0,j+0,k+0)*U(velTht,i+0,j+0,k+0)*cos(yCenter(j))/sin(yCenter(j)) * 0.5*geoFac
+                      sGeo_velt = (U(velPhi,i+0,j+0,k+0)**2) * cos(yCenter(j))/sin(yCenter(j)) * 0.5*geoFac
                    end if
 #endif
-                 sGeo_velx = (U(velPhi,i,j,k)**2) * geoFac                   !src[VR]  
+                 sGeo_velx = (U(velPhi,i+0,j+0,k+0)**2) * geoFac                   !src[VR]
 #if defined(FLASH_USM_MHD) || defined(FLASH_UGLM_MHD)
-                 sGeo_velx = sGeo_velx - (U(magPhi,i,j,k)**2) * geoFac / U(DENS_VAR,i,j,k)
+                 sGeo_velx = sGeo_velx - (U(magPhi,i+0,j+0,k+0)**2) * geoFac / U(DENS_VAR,i+0,j+0,k+0)
                  if (hy_geometry == SPHERICAL) &
-                      sGeo_velx = sGeo_velx + U(velTht,i,j,k)**2 * geoFac
-#endif                  
-                 sGeo_velp = -U(velPhi,i,j,k) * U(VELX_VAR,i,j,k) * geoFac !src[Vphi]
+                      sGeo_velx = sGeo_velx + U(velTht,i+0,j+0,k+0)**2 * geoFac
+#endif
+                 sGeo_velp = -U(velPhi,i+0,j+0,k+0) * U(VELX_VAR,i+0,j+0,k+0) * geoFac !src[Vphi]
 #if defined(FLASH_USM_MHD) || defined(FLASH_UGLM_MHD)
-                 sGeo_velp = sGeo_velp + U(magPhi,i,j,k) * U(MAGX_VAR,i,j,k) * geoFac / U(DENS_VAR,i,j,k)
-#endif                  
+                 sGeo_velp = sGeo_velp + U(magPhi,i+0,j+0,k+0) * U(MAGX_VAR,i+0,j+0,k+0) * geoFac / U(DENS_VAR,i+0,j+0,k+0)
+#endif
                  sGeo_pres = sGeo_dens * cs**2                              !src[PR]
-                 sGeo_eint = (sGeo_dens*enth)/U(DENS_VAR,i,j,k)  
+                 sGeo_eint = (sGeo_dens*enth)/U(DENS_VAR,i+0,j+0,k+0)
 #if defined(FLASH_USM_MHD) || defined(FLASH_UGLM_MHD)
-                 sGeo_magp = - U(velPhi,  i,j,k) * U(MAGX_VAR,i,j,k) * geoFac 
-                 sGeo_magz = - U(VELX_VAR,i,j,k) * U(magZ,    i,j,k) * geoFac 
+                 sGeo_magp = - U(velPhi,i+0,j+0,k+0) * U(MAGX_VAR,i+0,j+0,k+0) * geoFac
+                 sGeo_magz = - U(VELX_VAR,i+0,j+0,k+0) * U(magZ,i+0,j+0,k+0) * geoFac
 #endif
 
 #if (0)
@@ -739,61 +739,61 @@ Subroutine hy_getRiemannState(tileDesc,U,blkLimits,loGC,hiGC,dt,del,&
 #endif
 
                  !! Add sources terms for n+1/2 Left state
-                 Wn(HY_DENS,  DIRS ) = Wn(HY_DENS,  DIRS ) + hdt * sGeo_dens
-                 Wn(HY_VELX,  DIR_X) = Wn(HY_VELX,  DIR_X) + hdt * sGeo_velx
+                 Wn(HY_DENS,DIRS) = Wn(HY_DENS,DIRS) + hdt * sGeo_dens
+                 Wn(HY_VELX,DIR_X) = Wn(HY_VELX,DIR_X) + hdt * sGeo_velx
                  Wn(HY_velPhi,DIR_X) = Wn(HY_velPhi,DIR_X) + hdt * sGeo_velp
-                 Wn(HY_PRES,  DIRS ) = Wn(HY_PRES,  DIRS ) + hdt * sGeo_pres
-                 Wn(HY_EINT,  DIRS ) = Wn(HY_EINT,  DIRS ) + hdt * sGeo_eint
+                 Wn(HY_PRES,DIRS) = Wn(HY_PRES,DIRS) + hdt * sGeo_pres
+                 Wn(HY_EINT,DIRS) = Wn(HY_EINT,DIRS) + hdt * sGeo_eint
 #if NDIM > 1
                  if (hy_geometry == SPHERICAL) &
-                      Wn(HY_velTht,DIRS ) = Wn(HY_velTht,DIRS ) + hdt * sGeo_velt
+                      Wn(HY_velTht,DIRS) = Wn(HY_velTht,DIRS) + hdt * sGeo_velt
 #endif
 #if defined(FLASH_USM_MHD) || defined(FLASH_UGLM_MHD)
-                 Wn(H_magPhi, DIR_X) = Wn(H_magPhi, DIR_X) + hdt * sGeo_magp
-                 Wn(H_magZ,   DIR_X) = Wn(H_magZ,   DIR_X) + hdt * sGeo_magz
-#endif                 
+                 Wn(H_magPhi,DIR_X) = Wn(H_magPhi,DIR_X) + hdt * sGeo_magp
+                 Wn(H_magZ,DIR_X) = Wn(H_magZ,DIR_X) + hdt * sGeo_magz
+#endif
                  !! Add source terms for n+1/2 Right state
-                 Wp(HY_DENS,  DIRS ) = Wp(HY_DENS,  DIRS ) + hdt * sGeo_dens
-                 Wp(HY_VELX,  DIR_X) = Wp(HY_VELX,  DIR_X) + hdt * sGeo_velx
+                 Wp(HY_DENS,DIRS) = Wp(HY_DENS,DIRS) + hdt * sGeo_dens
+                 Wp(HY_VELX,DIR_X) = Wp(HY_VELX,DIR_X) + hdt * sGeo_velx
                  Wp(HY_velPhi,DIR_X) = Wp(HY_velPhi,DIR_X) + hdt * sGeo_velp
-                 Wp(HY_PRES,  DIRS ) = Wp(HY_PRES,  DIRS ) + hdt * sGeo_pres
-                 Wp(HY_EINT,  DIRS ) = Wp(HY_EINT,  DIRS ) + hdt * sGeo_eint
+                 Wp(HY_PRES,DIRS) = Wp(HY_PRES,DIRS) + hdt * sGeo_pres
+                 Wp(HY_EINT,DIRS) = Wp(HY_EINT,DIRS) + hdt * sGeo_eint
 #if NDIM > 1
                  if (hy_geometry == SPHERICAL) &
-                      Wp(HY_velTht,DIRS ) = Wp(HY_velTht,DIRS ) + hdt * sGeo_velt
+                      Wp(HY_velTht,DIRS) = Wp(HY_velTht,DIRS) + hdt * sGeo_velt
 #endif
 #if defined(FLASH_USM_MHD) || defined(FLASH_UGLM_MHD)
-                 Wp(H_magPhi, DIR_X) = Wp(H_magPhi, DIR_X) + hdt * sGeo_magp
-                 Wp(H_magZ,   DIR_X) = Wp(H_magZ,   DIR_X) + hdt * sGeo_magz
-#endif                 
+                 Wp(H_magPhi,DIR_X) = Wp(H_magPhi,DIR_X) + hdt * sGeo_magp
+                 Wp(H_magZ,DIR_X) = Wp(H_magZ,DIR_X) + hdt * sGeo_magz
+#endif
 
 
-                 if (xCenter(i) - 0.5*del(DIR_X) == 0.) then 
+                 if (xCenter(i) - 0.5*del(DIR_X) == 0.) then
                     ! the velocity should be zero at r=0.
-                    Wn(HY_VELX,  DIR_X) = 0.0
+                    Wn(HY_VELX,DIR_X) = 0.0
                     Wn(HY_velPhi,DIR_X) = 0.0
                     if (hy_geometry == SPHERICAL) Wn(HY_velTht,DIR_X) = 0.0
-#if defined(FLASH_USM_MHD) || defined(FLASH_UGLM_MHD)
-                    Wn(HY_MAGX,  DIR_X) = 0.0
-                    Wn(H_magPhi, DIR_X) = 0.0
-#endif                 
+#ifdef FLASH_USM_MHD || FLASH_UGLM_MHD
+                    Wn(HY_MAGX,DIR_X) = 0.0
+                    Wn(H_magPhi,DIR_X) = 0.0
+#endif
                  elseif (xCenter(i) + 0.5*del(DIR_X) == 0.) then
-                    Wp(HY_VELX,  DIR_X) = 0.0
+                    Wp(HY_VELX,DIR_X) = 0.0
                     Wp(HY_velPhi,DIR_X) = 0.0
                     if (hy_geometry == SPHERICAL) Wp(HY_velTht,DIR_X) = 0.0
-#if defined(FLASH_USM_MHD) || defined(FLASH_UGLM_MHD)
-                    Wp(HY_MAGX,  DIR_X) = 0.0
-                    Wp(H_magPhi, DIR_X) = 0.0
-#endif                 
+#ifdef FLASH_USM_MHD) || FLASH_UGLM_MHD
+                    Wp(HY_MAGX,DIR_X) = 0.0
+                    Wp(H_magPhi,DIR_X) = 0.0
+#endif
                  endif
                  !! Calculate R-momentum geometric source term for transverse fluxes
                  !! We will use the cell-centered states at t^n
-                 sGeo_trans = (U(velPhi,i,j,k)**2) * geoFac
-#if defined(FLASH_USM_MHD) || defined(FLASH_UGLM_MHD)
-                 sGeo_trans = sGeo_trans - (U(magPhi,i,j,k)**2) * geoFac/U(DENS_VAR,i,j,k)
+                 sGeo_trans = (U(velPhi,i+0,j+0,k+0)**2) * geoFac
+#ifdef FLASH_USM_MHD || FLASH_UGLM_MHD
+                 sGeo_trans = sGeo_trans - (U(magPhi,i+0,j+0,k+0)**2) * geoFac/U(DENS_VAR,i+0,j+0,k+0)
 #endif
                  if (hy_geometry == SPHERICAL) &
-                      sGeo_trans = sGeo_trans + U(velTht,i,j,k)**2 * geoFac
+                      sGeo_trans = sGeo_trans + U(velTht,i+0,j+0,k+0)**2 * geoFac
 #if NDIM > 1
                  Wn(HY_VELX,DIR_Y) = Wn(HY_VELX,DIR_Y) + hdt * sGeo_trans
                  Wp(HY_VELX,DIR_Y) = Wp(HY_VELX,DIR_Y) + hdt * sGeo_trans
@@ -807,35 +807,35 @@ Subroutine hy_getRiemannState(tileDesc,U,blkLimits,loGC,hiGC,dt,del,&
                      Wn(HY_PRES,DIR_X) < 0. .or. Wp(HY_PRES,DIR_X) < 0.) then
                     if(.NOT.TransX_updateOnly) then
                        print*,'[gRSt] afterGeo fallback to order 1 for DIR_X at i,j=',i,j,&
-                            ' in Block @',hy_meshMe
-                       print*,'[gRSt] afterGeo',Wn(HY_DENS,DIR_X),Wp(HY_DENS,DIR_X), &
-                            Wn(HY_PRES,DIR_X), Wp(HY_PRES,DIR_X)
-                         call fallbackToFirstOrder(DIR_X,Wn(:,DIR_X),Wp(:,DIR_X),Vc,hy_SpcL,hy_SpcR,U,i,j,k)
-                    end if
-                 end if
+                            ' in Block ',hy_meshMe
+                         print*,'[gRSt] afterGeo',Wn(HY_DENS,DIR_X),Wp(HY_DENS,DIR_X), &
+                              Wn(HY_PRES,DIR_X), Wp(HY_PRES,DIR_X)
+                           call fallbackToFirstOrder(DIR_X,Wn(:,DIR_X),Wp(:,DIR_X),Vc,hy_SpcL,hy_SpcR,U,i,j,k)
+                      end if
+                   end if
 #if NDIM > 1
-                 if (Wn(HY_DENS,DIR_Y) < 0. .or. Wp(HY_DENS,DIR_Y) < 0. .or. &
-                     Wn(HY_PRES,DIR_Y) < 0. .or. Wp(HY_PRES,DIR_Y) < 0.) then
-                    if(.NOT.TransY_updateOnly) then
-                       print*,'[gRSt] afterGeo fallback to order 1 for DIR_Y at i,j=',i,j,&
-                            ' in Block @',hy_meshMe
-                       print*,'[gRSt] afterGeo',Wn(HY_DENS,DIR_Y),Wp(HY_DENS,DIR_Y), &
-                            Wn(HY_PRES,DIR_Y), Wp(HY_PRES,DIR_Y)
-                         call fallbackToFirstOrder(DIR_Y,Wn(:,DIR_Y),Wp(:,DIR_Y),Vc,hy_SpcL,hy_SpcR,U,i,j,k)
-                    end if
-                 end if
+                   if (Wn(HY_DENS,DIR_Y) < 0. .or. Wp(HY_DENS,DIR_Y) < 0. .or. &
+                       Wn(HY_PRES,DIR_Y) < 0. .or. Wp(HY_PRES,DIR_Y) < 0.) then
+                      if(.NOT.TransY_updateOnly) then
+                         print*,'[gRSt] afterGeo fallback to order 1 for DIR_Y at i,j=',i,j,&
+                              ' in Block ',hy_meshMe
+                         print*,'[gRSt] afterGeo',Wn(HY_DENS,DIR_Y),Wp(HY_DENS,DIR_Y), &
+                              Wn(HY_PRES,DIR_Y), Wp(HY_PRES,DIR_Y)
+                           call fallbackToFirstOrder(DIR_Y,Wn(:,DIR_Y),Wp(:,DIR_Y),Vc,hy_SpcL,hy_SpcR,U,i,j,k)
+                      end if
+                   end if
 #if NDIM ==3
-                 if (Wn(HY_DENS,DIR_Z) < 0. .or. Wp(HY_DENS,DIR_Z) < 0. .or. &
-                     Wn(HY_PRES,DIR_Z) < 0. .or. Wp(HY_PRES,DIR_Z) < 0.) then
-                    if(.NOT.TransZ_updateOnly) &
-                         call fallbackToFirstOrder(DIR_Z,Wn(:,DIR_Z),Wp(:,DIR_Z),Vc,hy_SpcL,hy_SpcR,U,i,j,k)
-                 end if
+                   if (Wn(HY_DENS,DIR_Z) < 0. .or. Wp(HY_DENS,DIR_Z) < 0. .or. &
+                       Wn(HY_PRES,DIR_Z) < 0. .or. Wp(HY_PRES,DIR_Z) < 0.) then
+                      if(.NOT.TransZ_updateOnly) &
+                           call fallbackToFirstOrder(DIR_Z,Wn(:,DIR_Z),Wp(:,DIR_Z),Vc,hy_SpcL,hy_SpcR,U,i,j,k)
+                   end if
 #endif
 #endif
               endif !end if of if (hy_geometry .ne. CARTESIAN)
 
 #ifdef CFL_VAR
-              U(CFL_VAR,i,j,k) = cellCfl
+              U(CFL_VAR,i+0,j+0,k+0) = cellCfl
 #endif
               minCfl = min(minCfl,cellCfl)
 
@@ -843,51 +843,51 @@ Subroutine hy_getRiemannState(tileDesc,U,blkLimits,loGC,hiGC,dt,del,&
 #ifdef GRAVITY
               if (hy_useGravity .and. hy_useGravHalfUpdate)then
                  Wp(HY_VELX:HY_VELZ,DIR_X)=Wp(HY_VELX:HY_VELZ,DIR_X)&
-                      +hdt*(/Wp(HY_GRAV,DIR_X),ogravY(i,j,k),ogravZ(i,j,k)/)
+                      +hdt*(/Wp(HY_GRAV,DIR_X),ogravY(i+0,j+0,k+0),ogravZ(i+0,j+0,k+0)/)
 
                  Wn(HY_VELX:HY_VELZ,DIR_X)=Wn(HY_VELX:HY_VELZ,DIR_X)&
-                      +hdt*(/Wn(HY_GRAV,DIR_X),ogravY(i,j,k),ogravZ(i,j,k)/)
+                      +hdt*(/Wn(HY_GRAV,DIR_X),ogravY(i+0,j+0,k+0),ogravZ(i+0,j+0,k+0)/)
               endif
-#endif  
+#endif
               !! Store Riemann states to scratch arrays
 
-              if(.NOT.TransX_updateOnly) scrchFaceXPtr(HY_P01_FACEXPTR_VAR:HY_P01_FACEXPTR_VAR+HY_SCRATCH_NUM-1,i,j,k)&
+              if(.NOT.TransX_updateOnly) scrchFaceXPtr(HY_P01_FACEXPTR_VAR:HY_P01_FACEXPTR_VAR+HY_SCRATCH_NUM-1,i+0,j+0,k+0)&
                    = Wp(HY_DENS:HY_END_VARS-kGrav,DIR_X)
 
-              if(.NOT.TransX_updateOnly) scrchFaceXPtr(HY_N01_FACEXPTR_VAR:HY_N01_FACEXPTR_VAR+HY_SCRATCH_NUM-1,i,j,k)&
+              if(.NOT.TransX_updateOnly) scrchFaceXPtr(HY_N01_FACEXPTR_VAR:HY_N01_FACEXPTR_VAR+HY_SCRATCH_NUM-1,i+0,j+0,k+0)&
                    = Wn(HY_DENS:HY_END_VARS-kGrav,DIR_X)
 
 #if NDIM >= 2
 #ifdef GRAVITY
               if (hy_useGravity .and. hy_useGravHalfUpdate)then
                  Wp(HY_VELX:HY_VELZ,DIR_Y)=Wp(HY_VELX:HY_VELZ,DIR_Y)&
-                      +hdt*(/ogravX(i,j,k),Wp(HY_GRAV,DIR_Y),ogravZ(i,j,k)/)
+                      +hdt*(/ogravX(i+0,j+0,k+0),Wp(HY_GRAV,DIR_Y),ogravZ(i+0,j+0,k+0)/)
 
                  Wn(HY_VELX:HY_VELZ,DIR_Y)=Wn(HY_VELX:HY_VELZ,DIR_Y)&
-                      +hdt*(/ogravX(i,j,k),Wn(HY_GRAV,DIR_Y),ogravZ(i,j,k)/)
+                      +hdt*(/ogravX(i+0,j+0,k+0),Wn(HY_GRAV,DIR_Y),ogravZ(i+0,j+0,k+0)/)
               endif
 #endif
               !! Store Riemann states to scratch arrays
-              if(.NOT.TransY_updateOnly) scrchFaceYPtr(HY_P01_FACEYPTR_VAR:HY_P01_FACEYPTR_VAR+HY_SCRATCH_NUM-1,i,j,k)&
+              if(.NOT.TransY_updateOnly) scrchFaceYPtr(HY_P01_FACEYPTR_VAR:HY_P01_FACEYPTR_VAR+HY_SCRATCH_NUM-1,i+0,j+0,k+0)&
                    = Wp(HY_DENS:HY_END_VARS-kGrav,DIR_Y)
 
-              if(.NOT.TransY_updateOnly) scrchFaceYPtr(HY_N01_FACEYPTR_VAR:HY_N01_FACEYPTR_VAR+HY_SCRATCH_NUM-1,i,j,k)&
+              if(.NOT.TransY_updateOnly) scrchFaceYPtr(HY_N01_FACEYPTR_VAR:HY_N01_FACEYPTR_VAR+HY_SCRATCH_NUM-1,i+0,j+0,k+0)&
                    = Wn(HY_DENS:HY_END_VARS-kGrav,DIR_Y)
 #if NDIM == 3
 #ifdef GRAVITY
               if (hy_useGravity .and. hy_useGravHalfUpdate)then
                  Wp(HY_VELX:HY_VELZ,DIR_Z)=Wp(HY_VELX:HY_VELZ,DIR_Z)&
-                      +hdt*(/ogravX(i,j,k),ogravY(i,j,k),Wp(HY_GRAV,DIR_Z)/)
+                      +hdt*(/ogravX(i+0,j+0,k+0),ogravY(i+0,j+0,k+0),Wp(HY_GRAV,DIR_Z)/)
 
                  Wn(HY_VELX:HY_VELZ,DIR_Z)=Wn(HY_VELX:HY_VELZ,DIR_Z)&
-                      +hdt*(/ogravX(i,j,k),ogravY(i,j,k),Wn(HY_GRAV,DIR_Z)/)
+                      +hdt*(/ogravX(i+0,j+0,k+0),ogravY(i+0,j+0,k+0),Wn(HY_GRAV,DIR_Z)/)
               endif
 #endif
               !! Store Riemann states to scratch arrays
-              if(.NOT.TransZ_updateOnly) scrchFaceZPtr(HY_P01_FACEZPTR_VAR:HY_P01_FACEZPTR_VAR+HY_SCRATCH_NUM-1,i,j,k)&
+              if(.NOT.TransZ_updateOnly) scrchFaceZPtr(HY_P01_FACEZPTR_VAR:HY_P01_FACEZPTR_VAR+HY_SCRATCH_NUM-1,i+0,j+0,k+0)&
                    = Wp(HY_DENS:HY_END_VARS-kGrav,DIR_Z)
 
-              if(.NOT.TransZ_updateOnly) scrchFaceZPtr(HY_N01_FACEZPTR_VAR:HY_N01_FACEZPTR_VAR+HY_SCRATCH_NUM-1,i,j,k)&
+              if(.NOT.TransZ_updateOnly) scrchFaceZPtr(HY_N01_FACEZPTR_VAR:HY_N01_FACEZPTR_VAR+HY_SCRATCH_NUM-1,i+0,j+0,k+0)&
                    = Wn(HY_DENS:HY_END_VARS-kGrav,DIR_Z)
 #endif
 #endif
@@ -895,14 +895,14 @@ Subroutine hy_getRiemannState(tileDesc,U,blkLimits,loGC,hiGC,dt,del,&
 #if NFACE_VARS > 0
 #if NDIM > 1
               if (hy_order > 1 .and. hy_killdivB .and. (.not. hy_forceHydroLimit)) then
-                 if(.NOT.TransX_updateOnly) scrchFaceXPtr(HY_P06_FACEXPTR_VAR,i,j,k)= Bx(MAG_FACE_VAR,i+1, j,   k  )
-                 if(.NOT.TransX_updateOnly) scrchFaceXPtr(HY_N06_FACEXPTR_VAR,i,j,k)= Bx(MAG_FACE_VAR,i,   j,   k  )
+                 if(.NOT.TransX_updateOnly) scrchFaceXPtr(HY_P06_FACEXPTR_VAR,i+0,j+0,k+0)= Bx(MAG_FACE_VAR,i+1,j+0,k+0)
+                 if(.NOT.TransX_updateOnly) scrchFaceXPtr(HY_N06_FACEXPTR_VAR,i+0,j+0,k+0)= Bx(MAG_FACE_VAR,i+0,j+0,k+0)
 
-                 if(.NOT.TransY_updateOnly) scrchFaceYPtr(HY_P07_FACEYPTR_VAR,i,j,k)= By(MAG_FACE_VAR,i,   j+1, k  )
-                 if(.NOT.TransY_updateOnly) scrchFaceYPtr(HY_N07_FACEYPTR_VAR,i,j,k)= By(MAG_FACE_VAR,i,   j,   k  )
+                 if(.NOT.TransY_updateOnly) scrchFaceYPtr(HY_P07_FACEYPTR_VAR,i+0,j+0,k+0)= By(MAG_FACE_VAR,i+0,j+1,k+0)
+                 if(.NOT.TransY_updateOnly) scrchFaceYPtr(HY_N07_FACEYPTR_VAR,i+0,j+0,k+0)= By(MAG_FACE_VAR,i+0,j+0,k+0)
 #if NDIM == 3
-                 if(.NOT.TransZ_updateOnly) scrchFaceZPtr(HY_P08_FACEZPTR_VAR,i,j,k)= Bz(MAG_FACE_VAR,i,   j,   k+1)
-                 if(.NOT.TransZ_updateOnly) scrchFaceZPtr(HY_N08_FACEZPTR_VAR,i,j,k)= Bz(MAG_FACE_VAR,i,   j,   k  )
+                 if(.NOT.TransZ_updateOnly) scrchFaceZPtr(HY_P08_FACEZPTR_VAR,i+0,j+0,k+0)= Bz(MAG_FACE_VAR,i+0,j+0,k+1)
+                 if(.NOT.TransZ_updateOnly) scrchFaceZPtr(HY_N08_FACEZPTR_VAR,i+0,j+0,k+0)= Bz(MAG_FACE_VAR,i+0,j+0,k+0)
 #endif
               endif
 #endif
@@ -923,13 +923,13 @@ Subroutine hy_getRiemannState(tileDesc,U,blkLimits,loGC,hiGC,dt,del,&
         if (NDIM == 3) then
            lbz = lbound(scrchFaceZPtr); ubz = ubound(scrchFaceZPtr)
         end if
-        scrchFaceXPtr(HY_P06_FACEXPTR_VAR,:,:,:) = Bx(MAGI_FACE_VAR, lbx(2)+1:ubx(2)+1, lbx(3)  :ubx(3),   lbx(4):ubx(4))
-        scrchFaceXPtr(HY_N06_FACEXPTR_VAR,:,:,:) = Bx(MAGI_FACE_VAR, lbx(2)  :ubx(2),   lbx(3)  :ubx(3),   lbx(4):ubx(4))
-        scrchFaceYPtr(HY_P07_FACEYPTR_VAR,:,:,:) = By(MAGI_FACE_VAR, lby(2)  :uby(2),   lby(3)+1:uby(3)+1, lby(4):uby(4))
-        scrchFaceYPtr(HY_N07_FACEYPTR_VAR,:,:,:) = By(MAGI_FACE_VAR, lby(2)  :uby(2),   lby(3)  :uby(3),   lby(4):uby(4))
+        scrchFaceXPtr(HY_P06_FACEXPTR_VAR,:,:,:) = Bx(MAGI_FACE_VAR,lbx(2)+1:ubx(2)+1,lbx(3):ubx(3),lbx(4):ubx(4))
+        scrchFaceXPtr(HY_N06_FACEXPTR_VAR,:,:,:) = Bx(MAGI_FACE_VAR,lbx(2):ubx(2),lbx(3):ubx(3),lbx(4):ubx(4))
+        scrchFaceYPtr(HY_P07_FACEYPTR_VAR,:,:,:) = By(MAGI_FACE_VAR,lby(2):uby(2),lby(3)+1:uby(3)+1,lby(4):uby(4))
+        scrchFaceYPtr(HY_N07_FACEYPTR_VAR,:,:,:) = By(MAGI_FACE_VAR,lby(2):uby(2),lby(3):uby(3),lby(4):uby(4))
 #if NDIM == 3
-        scrchFaceZPtr(HY_P08_FACEZPTR_VAR,:,:,:) = Bz(MAGI_FACE_VAR, lbz(2) :ubz(2),  lbz(3) :ubz(3),  lbz(4)+1:ubz(4)+1)
-        scrchFaceZPtr(HY_N08_FACEZPTR_VAR,:,:,:) = Bz(MAGI_FACE_VAR, lbz(2) :ubz(2),  lbz(3) :ubz(3),  lbz(4)  :ubz(4))
+        scrchFaceZPtr(HY_P08_FACEZPTR_VAR,:,:,:) = Bz(MAGI_FACE_VAR,lbz(2):ubz(2),lbz(3):ubz(3),lbz(4)+1:ubz(4)+1)
+        scrchFaceZPtr(HY_N08_FACEZPTR_VAR,:,:,:) = Bz(MAGI_FACE_VAR,lbz(2):ubz(2),lbz(3):ubz(3),lbz(4):ubz(4))
 #endif
      endif
 #endif
@@ -977,27 +977,27 @@ Subroutine hy_getRiemannState(tileDesc,U,blkLimits,loGC,hiGC,dt,del,&
               do i=i0-2,imax+2
 
 #ifdef CFL_VAR
-                 cellCfl = U(CFL_VAR,i,j,k)
+                 cellCfl = U(CFL_VAR,i+0,j+0,k+0)
 #else
                  cellCfl = hy_cfl
 #endif
                  !! save the cell center values for later use
                  Vc(HY_DENS:HY_END_VARS-kGrav) = &
-                      (/U(DENS_VAR,i,j,k)&
-                       ,U(VELX_VAR:VELZ_VAR,i,j,k)&
-                       ,U(PRES_VAR,i,j,k)&
-#if defined(FLASH_USM_MHD) || defined(FLASH_UGLM_MHD)
-                       ,U(MAGX_VAR:MAGZ_VAR,i,j,k)&
+                      (/U(DENS_VAR,i+0,j+0,k+0)&
+                       ,U(VELX_VAR:VELZ_VAR,i+0,j+0,k+0)&
+                       ,U(PRES_VAR,i+0,j+0,k+0)&
+#ifdef FLASH_USM_MHD || FLASH_UGLM_MHD
+                       ,U(MAGX_VAR:MAGZ_VAR,i+0,j+0,k+0)&
 #endif
 #ifdef FLASH_UGLM_MHD
-                       ,U(GLMP_VAR,i,j,k) &
+                       ,U(GLMP_VAR,i+0,j+0,k+0) &
 #endif
-                       ,U(GAMC_VAR:GAME_VAR,i,j,k) &
-                       ,U(EINT_VAR,i,j,k) &
+                       ,U(GAMC_VAR:GAME_VAR,i+0,j+0,k+0) &
+                       ,U(EINT_VAR,i+0,j+0,k+0) &
 #ifdef FLASH_UHD_3T
-                       ,U(EELE_VAR,i,j,k) &
-                       ,U(EION_VAR,i,j,k) &
-                       ,U(ERAD_VAR,i,j,k) &
+                       ,U(EELE_VAR,i+0,j+0,k+0) &
+                       ,U(EION_VAR,i+0,j+0,k+0) &
+                       ,U(ERAD_VAR,i+0,j+0,k+0) &
 #endif
                        /)
 
@@ -1007,94 +1007,89 @@ Subroutine hy_getRiemannState(tileDesc,U,blkLimits,loGC,hiGC,dt,del,&
                  If ((j .ge. j0   .and. j .le. jmax  ) .and. (k .ge. k0 .and. k .le. kmax)) then
 #endif
                  ! YZ cross dervatives for X states
-                 SigmPtr => sig(:,DIR_Z,i,j-1,k)
-                 SigcPtr => sig(:,DIR_Z,i,j  ,k)
-                 SigpPtr => sig(:,DIR_Z,i,j+1,k)
+                 SigmPtr => sig(:,DIR_Z,i+0,j-1,k+0)
+                 SigcPtr => sig(:,DIR_Z,i+0,j+0,k+0)
+                 SigpPtr => sig(:,DIR_Z,i+0,j+1,k+0)
 
                  call  hy_upwindTransverseFlux&
                       (dir,transOrder3D,&
                        SigmPtr,SigcPtr,SigpPtr,&
-                       lambda   (1,DIR_Y,i,j,k),&
-                       leftEig(1,1,DIR_Y,i,j,k),&
-                       rghtEig(1,1,DIR_Y,i,j,k),&
+                       lambda(1,DIR_Y,i+0,j+0,k+0),&
+                       leftEig(1,1,DIR_Y,i+0,j+0,k+0),&
+                       rghtEig(1,1,DIR_Y,i+0,j+0,k+0),&
                        HY_END_VARS,TransFluxYZ(1))
 
                  ! ZY cross derivatives for X states
-                 SigmPtr => sig(:,DIR_Y,i,j,k-1)
-                 SigcPtr => sig(:,DIR_Y,i,j,k  )
-                 SigpPtr => sig(:,DIR_Y,i,j,k+1)
+                 SigmPtr => sig(:,DIR_Y,i+0,j+0,k-1)
+                 SigcPtr => sig(:,DIR_Y,i+0,j+0,k+0)
+                 SigpPtr => sig(:,DIR_Y,i+0,j+0,k+1)
 
                  call hy_upwindTransverseFlux&
                       (dir,transOrder3D,&
                        SigmPtr,SigcPtr,SigpPtr,&
-                       lambda   (1,DIR_Z,i,j,k),&
-                       leftEig(1,1,DIR_Z,i,j,k),&
-                       rghtEig(1,1,DIR_Z,i,j,k),&
+                       lambda(1,DIR_Z,i+0,j+0,k+0),&
+                       leftEig(1,1,DIR_Z,i+0,j+0,k+0),&
+                       rghtEig(1,1,DIR_Z,i+0,j+0,k+0),&
                        HY_END_VARS,TransFluxZY(1))
 
-#if defined(FLASH_USM_MHD) || defined(FLASH_UGLM_MHD)
+#ifdef FLASH_USM_MHD || FLASH_UGLM_MHD
                  TransFluxYZ(HY_MAGX) = 0.
                  TransFluxZY(HY_MAGX) = 0.
 #endif
-                 scrchFaceXPtr(HY_P01_FACEXPTR_VAR:HY_P01_FACEXPTR_VAR+HY_SCRATCH_NUM-1,i,j,k)=&
-                      scrchFaceXPtr(HY_P01_FACEXPTR_VAR:HY_P01_FACEXPTR_VAR+HY_SCRATCH_NUM-1,i,j,k)&
+                 scrchFaceXPtr(HY_P01_FACEXPTR_VAR:HY_P01_FACEXPTR_VAR+HY_SCRATCH_NUM-1,i+0,j+0,k+0)=&
+                      scrchFaceXPtr(HY_P01_FACEXPTR_VAR:HY_P01_FACEXPTR_VAR+HY_SCRATCH_NUM-1,i+0,j+0,k+0)&
                       +(TransFluxYZ(HY_DENS:HY_END_VARS-kGrav)+TransFluxZY(HY_DENS:HY_END_VARS-kGrav))*dt2dydz6
 
-                 scrchFaceXPtr(HY_N01_FACEXPTR_VAR:HY_N01_FACEXPTR_VAR+HY_SCRATCH_NUM-1,i,j,k)=&
-                      scrchFaceXPtr(HY_N01_FACEXPTR_VAR:HY_N01_FACEXPTR_VAR+HY_SCRATCH_NUM-1,i,j,k)&
+                 scrchFaceXPtr(HY_N01_FACEXPTR_VAR:HY_N01_FACEXPTR_VAR+HY_SCRATCH_NUM-1,i+0,j+0,k+0)=&
+                      scrchFaceXPtr(HY_N01_FACEXPTR_VAR:HY_N01_FACEXPTR_VAR+HY_SCRATCH_NUM-1,i+0,j+0,k+0)&
                       +(TransFluxYZ(HY_DENS:HY_END_VARS-kGrav)+TransFluxZY(HY_DENS:HY_END_VARS-kGrav))*dt2dydz6
 
                  !! CHECK FOR NEGATIVITY OF DENSITY AND PRESSURE IN X-DIRECTION
-                 IF (scrchFaceXPtr(HY_P01_FACEXPTR_VAR,i,j,k) .le. 0. .or. &
-                     scrchFaceXPtr(HY_N01_FACEXPTR_VAR,i,j,k) .le. 0. .or. &
-                     scrchFaceXPtr(HY_P05_FACEXPTR_VAR,i,j,k) .le. 0. .or. &
-                     scrchFaceXPtr(HY_N05_FACEXPTR_VAR,i,j,k) .le. 0. ) THEN
+                 IF (scrchFaceXPtr(HY_P01_FACEXPTR_VAR,i+0,j+0,k+0) .le. 0. .or. &
+                     scrchFaceXPtr(HY_N01_FACEXPTR_VAR,i+0,j+0,k+0) .le. 0. .or. &
+                     scrchFaceXPtr(HY_P05_FACEXPTR_VAR,i+0,j+0,k+0) .le. 0. .or. &
+                     scrchFaceXPtr(HY_N05_FACEXPTR_VAR,i+0,j+0,k+0) .le. 0. ) THEN
 
-!!$                    scrchFaceXPtr(HY_P01_FACEXPTR_VAR:HY_P01_FACEXPTR_VAR+HY_SCRATCH_NUM-1,i,j,k)=&
-!!$                         Vc(HY_DENS:HY_END_VARS-kGrav)
-!!$
-!!$                    scrchFaceXPtr(HY_N01_FACEXPTR_VAR:HY_N01_FACEXPTR_VAR+HY_SCRATCH_NUM-1,i,j,k)=&
-!!$                         Vc(HY_DENS:HY_END_VARS-kGrav)
                     call fallbackToFirstOrder(DIR_X,&
-                         scrchFaceXPtr(HY_N01_FACEXPTR_VAR:,i,j,k),&
-                         scrchFaceXPtr(HY_P01_FACEXPTR_VAR:,i,j,k),&
+                         scrchFaceXPtr(HY_N01_FACEXPTR_VAR:,i+0,j+0,k+0),&
+                         scrchFaceXPtr(HY_P01_FACEXPTR_VAR:,i+0,j+0,k+0),&
                          Vc, &
                          hy_SpcL,hy_SpcR,U,i,j,k)
 
 #if (NSPECIES+NMASS_SCALARS) > 0
                  ELSE if (hy_fullSpecMsFluxHandling) then
                  ! YZ cross dervatives for X states
-                    SigmPtr => hy_SpcSig(:,i,j-1,k,DIR_Z)
-                    SigcPtr => hy_SpcSig(:,i,j  ,k,DIR_Z)
-                    SigpPtr => hy_SpcSig(:,i,j+1,k,DIR_Z)
+                    SigmPtr => hy_SpcSig(:,i+0,j-1,k+0,DIR_Z)
+                    SigcPtr => hy_SpcSig(:,i+0,j+0,k+0,DIR_Z)
+                    SigpPtr => hy_SpcSig(:,i+0,j+1,k+0,DIR_Z)
 
                     call hy_upwindTransverseFlux&
                       (dir,transOrder3D,&
                        SigmPtr,SigcPtr,SigpPtr,&
-                       lambda   (1,DIR_Y,i,j,k),&
-                       leftEig(1,1,DIR_Y,i,j,k),&
-                       rghtEig(1,1,DIR_Y,i,j,k),&
+                       lambda(1,DIR_Y,i+0,j+0,k+0),&
+                       leftEig(1,1,DIR_Y,i+0,j+0,k+0),&
+                       rghtEig(1,1,DIR_Y,i+0,j+0,k+0),&
                        HY_NSPEC,TransFluxYZ(HY_SPEC_BEG),&
                        speciesScalar=.true.)
 
                  ! ZY cross derivatives for X states
-                    SigmPtr => hy_SpcSig(:,i,j,k-1,DIR_Y)
-                    SigcPtr => hy_SpcSig(:,i,j,k  ,DIR_Y)
-                    SigpPtr => hy_SpcSig(:,i,j,k+1,DIR_Y)
+                    SigmPtr => hy_SpcSig(:,i+0,j+0,k-1,DIR_Y)
+                    SigcPtr => hy_SpcSig(:,i+0,j+0,k+0,DIR_Y)
+                    SigpPtr => hy_SpcSig(:,i+0,j+0,k+1,DIR_Y)
 
                     call hy_upwindTransverseFlux&
                       (dir,transOrder3D,&
                        SigmPtr,SigcPtr,SigpPtr,&
-                       lambda   (1,DIR_Z,i,j,k),&
-                       leftEig(1,1,DIR_Z,i,j,k),&
-                       rghtEig(1,1,DIR_Z,i,j,k),&
+                       lambda(1,DIR_Z,i+0,j+0,k+0),&
+                       leftEig(1,1,DIR_Z,i+0,j+0,k+0),&
+                       rghtEig(1,1,DIR_Z,i+0,j+0,k+0),&
                        HY_NSPEC,TransFluxZY(HY_SPEC_BEG),&
                        speciesScalar=.true.)
 
-                    hy_SpcR(1:HY_NSPEC,i,j,k,DIR_X) = hy_SpcR(1:HY_NSPEC,i,j,k,DIR_X)&
+                    hy_SpcR(1:HY_NSPEC,i+0,j+0,k+0,DIR_X) = hy_SpcR(1:HY_NSPEC,i+0,j+0,k+0,DIR_X)&
                       +(TransFluxYZ(HY_SPEC_BEG:HY_SPEC_END)+TransFluxZY(HY_SPEC_BEG:HY_SPEC_END))*dt2dydz6
 
-                    hy_SpcL(1:HY_NSPEC,i,j,k,DIR_X) = hy_SpcL(1:HY_NSPEC,i,j,k,DIR_X)&
+                    hy_SpcL(1:HY_NSPEC,i+0,j+0,k+0,DIR_X) = hy_SpcL(1:HY_NSPEC,i+0,j+0,k+0,DIR_X)&
                       +(TransFluxYZ(HY_SPEC_BEG:HY_SPEC_END)+TransFluxZY(HY_SPEC_BEG:HY_SPEC_END))*dt2dydz6
 #endif
                  ENDIF
@@ -1103,107 +1098,85 @@ Subroutine hy_getRiemannState(tileDesc,U,blkLimits,loGC,hiGC,dt,del,&
 #endif
                  Endif
 
-                 !! ============ y-direction ==================================================================
-                 If (j .ge. j0-1 .and. j .le. jmax+1) then
+                 !! ============ Y-direction ==================================================================
+                                  If (j .ge. j0-1 .and. j .le. jmax+1) then
 #ifdef FLASH_UHD_HYDRO
-                 If ((i .ge. i0   .and. i .le. imax  ) .and. (k .ge. k0 .and. k .le. kmax)) then
+                                  If ((i .ge. i0   .and. i .le. imax  ) .and. (k .ge. k0 .and. k .le. kmax)) then
 #endif
-                 ! ZX cross derivatives for Y states
-                 SigmPtr => sig(:,DIR_X,i,j,k-1)
-                 SigcPtr => sig(:,DIR_X,i,j,k  )
-                 SigpPtr => sig(:,DIR_X,i,j,k+1)
+                                  ! ZX cross derivatives for Y states
+                                  SigmPtr => sig(:,DIR_X,i+0,j+0,k-1)
+                                  SigcPtr => sig(:,DIR_X,i+0,j+0,k+0)
+                                  SigpPtr => sig(:,DIR_X,i+0,j+0,k+1)
 
-                 call  hy_upwindTransverseFlux&
-                      (dir,transOrder3D,&
-                       SigmPtr,SigcPtr,SigpPtr,&
-                       lambda   (1,DIR_Z,i,j,k),&
-                       leftEig(1,1,DIR_Z,i,j,k),&
-                       rghtEig(1,1,DIR_Z,i,j,k),&
-                       HY_END_VARS,TransFluxZX(1))
+                                  call  hy_upwindTransverseFlux&
+                                       (dir,transOrder3D,&
+                                        SigmPtr,SigcPtr,SigpPtr,&
+                                        lambda(1,DIR_Z,i+0,j+0,k+0),&
+                                        leftEig(1,1,DIR_Z,i+0,j+0,k+0),&
+                                        rghtEig(1,1,DIR_Z,i+0,j+0,k+0),&
+                                        HY_END_VARS,TransFluxZX(1))
 
-                 ! XZ cross derivatives for Y states
-                 SigmPtr => sig(:,DIR_Z,i-1,j,k)
-                 SigcPtr => sig(:,DIR_Z,i  ,j,k)
-                 SigpPtr => sig(:,DIR_Z,i+1,j,k)
+                                  ! XZ cross derivatives for Y states
+                                  SigmPtr => sig(:,DIR_Z,i-1,j+0,k+0)
+                                  SigcPtr => sig(:,DIR_Z,i+0,j+0,k+0)
+                                  SigpPtr => sig(:,DIR_Z,i+1,j+0,k+0)
 
-                 call  hy_upwindTransverseFlux&
-                      (dir,transOrder3D,&
-                       SigmPtr,SigcPtr,SigpPtr,&
-                       lambda   (1,DIR_X,i,j,k),&
-                       leftEig(1,1,DIR_X,i,j,k),&
-                       rghtEig(1,1,DIR_X,i,j,k),&
-                       HY_END_VARS,TransFluxXZ(1))
+                                  call  hy_upwindTransverseFlux&
+                                       (dir,transOrder3D,&
+                                        SigmPtr,SigcPtr,SigpPtr,&
+                                        lambda(1,DIR_X,i+0,j+0,k+0),&
+                                        leftEig(1,1,DIR_X,i+0,j+0,k+0),&
+                                        rghtEig(1,1,DIR_X,i+0,j+0,k+0),&
+                                        HY_END_VARS,TransFluxXZ(1))
 
-#if defined(FLASH_USM_MHD) || defined(FLASH_UGLM_MHD)
-                 TransFluxZX(HY_MAGY) = 0.
-                 TransFluxXZ(HY_MAGY) = 0.
+#ifdef FLASH_USM_MHD || FLASH_UGLM_MHD
+                                  TransFluxZX(HY_MAGY) = 0.
+                                  TransFluxXZ(HY_MAGY) = 0.
 #endif
-                 scrchFaceYPtr(HY_P01_FACEYPTR_VAR:HY_P01_FACEYPTR_VAR+HY_SCRATCH_NUM-1,i,j,k)=&
-                      scrchFaceYPtr(HY_P01_FACEYPTR_VAR:HY_P01_FACEYPTR_VAR+HY_SCRATCH_NUM-1,i,j,k)&
-                      + (TransFluxZX(HY_DENS:HY_END_VARS-kGrav)+TransFluxXZ(HY_DENS:HY_END_VARS-kGrav))*dt2dzdx6
+                                  scrchFaceYPtr(HY_P01_FACEYPTR_VAR:HY_P01_FACEYPTR_VAR+HY_SCRATCH_NUM-1,i+0,j+0,k+0)=&
+                                       scrchFaceYPtr(HY_P01_FACEYPTR_VAR:HY_P01_FACEYPTR_VAR+HY_SCRATCH_NUM-1,i+0,j+0,k+0)&
+                                       + (TransFluxZX(HY_DENS:HY_END_VARS-kGrav)+TransFluxXZ(HY_DENS:HY_END_VARS-kGrav))*dt2dzdx6
 
-                 scrchFaceYPtr(HY_N01_FACEYPTR_VAR:HY_N01_FACEYPTR_VAR+HY_SCRATCH_NUM-1,i,j,k)=&
-                      scrchFaceYPtr(HY_N01_FACEYPTR_VAR:HY_N01_FACEYPTR_VAR+HY_SCRATCH_NUM-1,i,j,k)&
-                      + (TransFluxZX(HY_DENS:HY_END_VARS-kGrav)+TransFluxXZ(HY_DENS:HY_END_VARS-kGrav))*dt2dzdx6
+                                  scrchFaceYPtr(HY_N01_FACEYPTR_VAR:HY_N01_FACEYPTR_VAR+HY_SCRATCH_NUM-1,i+0,j+0,k+0)=&
+                                       scrchFaceYPtr(HY_N01_FACEYPTR_VAR:HY_N01_FACEYPTR_VAR+HY_SCRATCH_NUM-1,i+0,j+0,k+0)&
+                                       + (TransFluxZX(HY_DENS:HY_END_VARS-kGrav)+TransFluxXZ(HY_DENS:HY_END_VARS-kGrav))*dt2dzdx6
 
-                 !! CHECK FOR NEGATIVITY OF DENSITY AND PRESSURE IN Y-DIRECTION
-                 IF (scrchFaceYPtr(HY_P01_FACEYPTR_VAR,i,j,k) .le. 0. .or. &
-                     scrchFaceYPtr(HY_N01_FACEYPTR_VAR,i,j,k) .le. 0. .or. &
-                     scrchFaceYPtr(HY_P05_FACEYPTR_VAR,i,j,k) .le. 0. .or. &
-                     scrchFaceYPtr(HY_N05_FACEYPTR_VAR,i,j,k) .le. 0. ) THEN
+                                  !! CHECK FOR NEGATIVITY OF DENSITY AND PRESSURE IN Y-DIRECTION
+                                  IF (scrchFaceYPtr(HY_P01_FACEYPTR_VAR,i+0,j+0,k+0) .le. 0. .or. &
+                                      scrchFaceYPtr(HY_N01_FACEYPTR_VAR,i+0,j+0,k+0) .le. 0. .or. &
+                                      scrchFaceYPtr(HY_P05_FACEYPTR_VAR,i+0,j+0,k+0) .le. 0. .or. &
+                                      scrchFaceYPtr(HY_N05_FACEYPTR_VAR,i+0,j+0,k+0) .le. 0. ) THEN
 
-!!$                    scrchFaceYPtr(HY_P01_FACEYPTR_VAR:HY_P01_FACEYPTR_VAR+HY_SCRATCH_NUM-1,i,j,k)=&
-!!$                         Vc(HY_DENS:HY_END_VARS-kGrav)
-!!$
-!!$                    scrchFaceYPtr(HY_N01_FACEYPTR_VAR:HY_N01_FACEYPTR_VAR+HY_SCRATCH_NUM-1,i,j,k)=&
-!!$                         Vc(HY_DENS:HY_END_VARS-kGrav)
-                    call fallbackToFirstOrder(DIR_Y,&
-                         scrchFaceYPtr(HY_N01_FACEYPTR_VAR:,i,j,k),&
-                         scrchFaceYPtr(HY_P01_FACEYPTR_VAR:,i,j,k),&
-                         Vc, &
-                         hy_SpcL,hy_SpcR,U,i,j,k)
+                                     call fallbackToFirstOrder(DIR_Y,&
+                                          scrchFaceYPtr(HY_N01_FACEYPTR_VAR:,i+0,j+0,k+0),&
+                                          scrchFaceYPtr(HY_P01_FACEYPTR_VAR:,i+0,j+0,k+0),&
+                                          Vc, &
+                                          hy_SpcL,hy_SpcR,U,i,j,k)
 
 #if (NSPECIES+NMASS_SCALARS) > 0
-                 ELSE if (hy_fullSpecMsFluxHandling) then
-                 !ZX cross dervatives for X states
-                    SigmPtr => hy_SpcSig(:,i,j,k-1,DIR_X)
-                    SigcPtr => hy_SpcSig(:,i,j,k  ,DIR_X)
-                    SigpPtr => hy_SpcSig(:,i,j,k+1,DIR_X)
+                                  ELSE if (hy_fullSpecMsFluxHandling) then
+                                  !ZX cross dervatives for X states
+                                     SigmPtr => hy_SpcSig(:,i+0,j+0,k-1,DIR_X)
+                                     SigcPtr => hy_SpcSig(:,i+0,j+0,k+0,DIR_X)
+                                     SigpPtr => hy_SpcSig(:,i+0,j+0,k+1,DIR_X)
 
-                    call hy_upwindTransverseFlux&
-                      (dir,transOrder3D,&
-                       SigmPtr,SigcPtr,SigpPtr,&
-                       lambda   (1,DIR_Z,i,j,k),&
-                       leftEig(1,1,DIR_Z,i,j,k),&
-                       rghtEig(1,1,DIR_Z,i,j,k),&
-                       HY_NSPEC,TransFluxZX(HY_SPEC_BEG),&
-                       speciesScalar=.true.)
+                                     call hy_upwindTransverseFlux&
+                                       (dir,transOrder3D,&
+                                        SigmPtr,SigcPtr,SigpPtr,&
+                                        lambda(1,DIR_Z,i+0,j+0,k+0),&
+                                        leftEig(1,1,DIR_Z,i+0,j+0,k+0),&
+                                        rghtEig(1,1,DIR_Z,i+0,j+0,k+0),&
+                                     hy_SpcR(1:HY_NSPEC,i+0,j+0,k+0,DIR_Y) = hy_SpcR(1:HY_NSPEC,i+0,j+0,k+0,DIR_Y)&
+                                       +(TransFluxZX(HY_SPEC_BEG:HY_SPEC_END)+TransFluxXZ(HY_SPEC_BEG:HY_SPEC_END))*dt2dydz6
 
-                 ! XZ cross derivatives for Y states
-                    SigmPtr => hy_SpcSig(:,i-1,j,k,DIR_Z)
-                    SigcPtr => hy_SpcSig(:,i  ,j,k,DIR_Z)
-                    SigpPtr => hy_SpcSig(:,i+1,j,k,DIR_Z)
-
-                    call hy_upwindTransverseFlux&
-                      (dir,transOrder3D,&
-                       SigmPtr,SigcPtr,SigpPtr,&
-                       lambda   (1,DIR_X,i,j,k),&
-                       leftEig(1,1,DIR_X,i,j,k),&
-                       rghtEig(1,1,DIR_X,i,j,k),&
-                       HY_NSPEC,TransFluxXZ(HY_SPEC_BEG),&
-                       speciesScalar=.true.)
-
-                    hy_SpcR(1:HY_NSPEC,i,j,k,DIR_Y) = hy_SpcR(1:HY_NSPEC,i,j,k,DIR_Y)&
-                      +(TransFluxZX(HY_SPEC_BEG:HY_SPEC_END)+TransFluxXZ(HY_SPEC_BEG:HY_SPEC_END))*dt2dydz6
-
-                    hy_SpcL(1:HY_NSPEC,i,j,k,DIR_Y) = hy_SpcL(1:HY_NSPEC,i,j,k,DIR_Y)&
-                      +(TransFluxZX(HY_SPEC_BEG:HY_SPEC_END)+TransFluxXZ(HY_SPEC_BEG:HY_SPEC_END))*dt2dydz6
+                                     hy_SpcL(1:HY_NSPEC,i+0,j+0,k+0,DIR_Y) = hy_SpcL(1:HY_NSPEC,i+0,j+0,k+0,DIR_Y)&
+                                       +(TransFluxZX(HY_SPEC_BEG:HY_SPEC_END)+TransFluxXZ(HY_SPEC_BEG:HY_SPEC_END))*dt2dydz6
 #endif
-                 ENDIF
+                                  ENDIF
 #ifdef FLASH_UHD_HYDRO
-                 Endif
+                                  Endif
 #endif
-                 Endif
+                                  Endif
 
 
                  !! ============ z-direction ==================================================================
@@ -1212,59 +1185,54 @@ Subroutine hy_getRiemannState(tileDesc,U,blkLimits,loGC,hiGC,dt,del,&
                  If ((i .ge. i0   .and. i .le. imax  ) .and. (j .ge. j0 .and. j .le. jmax)) then
 #endif
                  ! XY cross derivatives for Z states
-                 SigmPtr => sig(:,DIR_Y,i-1,j,k)
-                 SigcPtr => sig(:,DIR_Y,i  ,j,k)
-                 SigpPtr => sig(:,DIR_Y,i+1,j,k)
+                 SigmPtr => sig(:,DIR_Y,i-1,j+0,k+0)
+                 SigcPtr => sig(:,DIR_Y,i+0,j+0,k+0)
+                 SigpPtr => sig(:,DIR_Y,i+1,j+0,k+0)
 
                  call  hy_upwindTransverseFlux&
                       (dir,transOrder3D,&
                        SigmPtr,SigcPtr,SigpPtr,&
-                       lambda   (1,DIR_X,i,j,k),&
-                       leftEig(1,1,DIR_X,i,j,k),&
-                       rghtEig(1,1,DIR_X,i,j,k),&
+                       lambda(1,DIR_X,i+0,j+0,k+0),&
+                       leftEig(1,1,DIR_X,i+0,j+0,k+0),&
+                       rghtEig(1,1,DIR_X,i+0,j+0,k+0),&
                        HY_END_VARS,TransFluxXY(1))
 
                  ! YX cross derivatives for Z states
-                 SigmPtr => sig(:,DIR_X,i,j-1,k)
-                 SigcPtr => sig(:,DIR_X,i,j  ,k)
-                 SigpPtr => sig(:,DIR_X,i,j+1,k)
+                 SigmPtr => sig(:,DIR_X,i+0,j-1,k+0)
+                 SigcPtr => sig(:,DIR_X,i+0,j+0,k+0)
+                 SigpPtr => sig(:,DIR_X,i+0,j+1,k+0)
 
                  call  hy_upwindTransverseFlux&
                       (dir,transOrder3D,&
                        SigmPtr,SigcPtr,SigpPtr,&
-                       lambda   (1,DIR_Y,i,j,k),&
-                       leftEig(1,1,DIR_Y,i,j,k),&
-                       rghtEig(1,1,DIR_Y,i,j,k),&
+                       lambda(1,DIR_Y,i+0,j+0,k+0),&
+                       leftEig(1,1,DIR_Y,i+0,j+0,k+0),&
+                       rghtEig(1,1,DIR_Y,i+0,j+0,k+0),&
                        HY_END_VARS,TransFluxYX(1))
 
-#if defined(FLASH_USM_MHD) || defined(FLASH_UGLM_MHD)
+#ifdef FLASH_USM_MHD|| FLASH_UGLM_MHD
                  TransFluxXY(HY_MAGZ) = 0.
                  TransFluxYX(HY_MAGZ) = 0.
 #endif
 
-                 scrchFaceZPtr(HY_P01_FACEZPTR_VAR:HY_P01_FACEZPTR_VAR+HY_SCRATCH_NUM-1,i,j,k)=&
-                      scrchFaceZPtr(HY_P01_FACEZPTR_VAR:HY_P01_FACEZPTR_VAR+HY_SCRATCH_NUM-1,i,j,k)&
+                 scrchFaceZPtr(HY_P01_FACEZPTR_VAR:HY_P01_FACEZPTR_VAR+HY_SCRATCH_NUM-1,i+0,j+0,k+0)=&
+                      scrchFaceZPtr(HY_P01_FACEZPTR_VAR:HY_P01_FACEZPTR_VAR+HY_SCRATCH_NUM-1,i+0,j+0,k+0)&
                       + (TransFluxXY(HY_DENS:HY_END_VARS-kGrav)+TransFluxYX(HY_DENS:HY_END_VARS-kGrav))*dt2dxdy6
 
-                 scrchFaceZPtr(HY_N01_FACEZPTR_VAR:HY_N01_FACEZPTR_VAR+HY_SCRATCH_NUM-1,i,j,k)=&
-                      scrchFaceZPtr(HY_N01_FACEZPTR_VAR:HY_N01_FACEZPTR_VAR+HY_SCRATCH_NUM-1,i,j,k)&
+                 scrchFaceZPtr(HY_N01_FACEZPTR_VAR:HY_N01_FACEZPTR_VAR+HY_SCRATCH_NUM-1,i+0,j+0,k+0)=&
+                      scrchFaceZPtr(HY_N01_FACEZPTR_VAR:HY_N01_FACEZPTR_VAR+HY_SCRATCH_NUM-1,i+0,j+0,k+0)&
                       + (TransFluxXY(HY_DENS:HY_END_VARS-kGrav)+TransFluxYX(HY_DENS:HY_END_VARS-kGrav))*dt2dxdy6
 
 
                  !! CHECK FOR NEGATIVITY OF DENSITY AND PRESSURE IN Z-DIRECTION
-                 IF (scrchFaceZPtr(HY_P01_FACEZPTR_VAR,i,j,k) .le. 0. .or. &
-                     scrchFaceZPtr(HY_N01_FACEZPTR_VAR,i,j,k) .le. 0. .or. &
-                     scrchFaceZPtr(HY_P05_FACEZPTR_VAR,i,j,k) .le. 0. .or. &
-                     scrchFaceZPtr(HY_N05_FACEZPTR_VAR,i,j,k) .le. 0. ) THEN
+                 IF (scrchFaceZPtr(HY_P01_FACEZPTR_VAR,i+0,j+0,k+0) .le. 0. .or. &
+                     scrchFaceZPtr(HY_N01_FACEZPTR_VAR,i+0,j+0,k+0) .le. 0. .or. &
+                     scrchFaceZPtr(HY_P05_FACEZPTR_VAR,i+0,j+0,k+0) .le. 0. .or. &
+                     scrchFaceZPtr(HY_N05_FACEZPTR_VAR,i+0,j+0,k+0) .le. 0. ) THEN
 
-!!$                    scrchFaceZPtr(HY_P01_FACEZPTR_VAR:HY_P01_FACEZPTR_VAR+HY_SCRATCH_NUM-1,i,j,k)=&
-!!$                         Vc(HY_DENS:HY_END_VARS-kGrav)
-!!$
-!!$                    scrchFaceZPtr(HY_N01_FACEZPTR_VAR:HY_N01_FACEZPTR_VAR+HY_SCRATCH_NUM-1,i,j,k)=&
-!!$                         Vc(HY_DENS:HY_END_VARS-kGrav)
                     call fallbackToFirstOrder(DIR_Z,&
-                         scrchFaceZPtr(HY_N01_FACEZPTR_VAR:,i,j,k),&
-                         scrchFaceZPtr(HY_P01_FACEZPTR_VAR:,i,j,k),&
+                         scrchFaceZPtr(HY_N01_FACEZPTR_VAR:,i+0,j+0,k+0),&
+                         scrchFaceZPtr(HY_P01_FACEZPTR_VAR:,i+0,j+0,k+0),&
                          Vc, &
                          hy_SpcL,hy_SpcR,U,i,j,k)
 
@@ -1272,37 +1240,37 @@ Subroutine hy_getRiemannState(tileDesc,U,blkLimits,loGC,hiGC,dt,del,&
 #if (NSPECIES+NMASS_SCALARS) > 0
                  ELSE if (hy_fullSpecMsFluxHandling) then
                  ! XY cross dervatives for X states
-                    SigmPtr => hy_SpcSig(:,i-1,j,k,DIR_Y)
-                    SigcPtr => hy_SpcSig(:,i,  j,k,DIR_Y)
-                    SigpPtr => hy_SpcSig(:,i+1,j,k,DIR_Y)
+                    SigmPtr => hy_SpcSig(:,i-1,j+0,k+0,DIR_Y)
+                    SigcPtr => hy_SpcSig(:,i+0,j+0,k+0,DIR_Y)
+                    SigpPtr => hy_SpcSig(:,i+1,j+0,k+0,DIR_Y)
 
                     call hy_upwindTransverseFlux&
                       (dir,transOrder3D,&
                        SigmPtr,SigcPtr,SigpPtr,&
-                       lambda   (1,DIR_X,i,j,k),&
-                       leftEig(1,1,DIR_X,i,j,k),&
-                       rghtEig(1,1,DIR_X,i,j,k),&
+                       lambda(1,DIR_X,i+0,j+0,k+0),&
+                       leftEig(1,1,DIR_X,i+0,j+0,k+0),&
+                       rghtEig(1,1,DIR_X,i+0,j+0,k+0),&
                        HY_NSPEC,TransFluxXY(HY_SPEC_BEG),&
                        speciesScalar=.true.)
 
                  ! YX cross derivatives for Y states
-                    SigmPtr => hy_SpcSig(:,i,j-1,k,DIR_X)
-                    SigcPtr => hy_SpcSig(:,i,j,  k,DIR_X)
-                    SigpPtr => hy_SpcSig(:,i,j+1,k,DIR_X)
+                    SigmPtr => hy_SpcSig(:,i+0,j-1,k+0,DIR_X)
+                    SigcPtr => hy_SpcSig(:,i+0,j+0,k+0,DIR_X)
+                    SigpPtr => hy_SpcSig(:,i+0,j+1,k+0,DIR_X)
 
                     call hy_upwindTransverseFlux&
                       (dir,transOrder3D,&
                        SigmPtr,SigcPtr,SigpPtr,&
-                       lambda   (1,DIR_Y,i,j,k),&
-                       leftEig(1,1,DIR_Y,i,j,k),&
-                       rghtEig(1,1,DIR_Y,i,j,k),&
+                       lambda(1,DIR_Y,i+0,j+0,k+0),&
+                       leftEig(1,1,DIR_Y,i+0,j+0,k+0),&
+                       rghtEig(1,1,DIR_Y,i+0,j+0,k+0),&
                        HY_NSPEC,TransFluxYX(HY_SPEC_BEG),&
                        speciesScalar=.true.)
 
-                    hy_SpcR(1:HY_NSPEC,i,j,k,DIR_Z) = hy_SpcR(1:HY_NSPEC,i,j,k,DIR_Z)&
+                    hy_SpcR(1:HY_NSPEC,i+0,j+0,k+0,DIR_Z) = hy_SpcR(1:HY_NSPEC,i+0,j+0,k+0,DIR_Z)&
                       +(TransFluxXY(HY_SPEC_BEG:HY_SPEC_END)+TransFluxYX(HY_SPEC_BEG:HY_SPEC_END))*dt2dydz6
 
-                    hy_SpcL(1:HY_NSPEC,i,j,k,DIR_Z) = hy_SpcL(1:HY_NSPEC,i,j,k,DIR_Z)&
+                    hy_SpcL(1:HY_NSPEC,i+0,j+0,k+0,DIR_Z) = hy_SpcL(1:HY_NSPEC,i+0,j+0,k+0,DIR_Z)&
                       +(TransFluxXY(HY_SPEC_BEG:HY_SPEC_END)+TransFluxYX(HY_SPEC_BEG:HY_SPEC_END))*dt2dydz6
 #endif
                  ENDIF
@@ -1313,7 +1281,7 @@ Subroutine hy_getRiemannState(tileDesc,U,blkLimits,loGC,hiGC,dt,del,&
 
                  if (hy_fallbackLowerCFL) then
 #ifdef CFL_VAR
-                    U(CFL_VAR,i,j,k) = cellCfl
+                    U(CFL_VAR,i+0,j+0,k+0) = cellCfl
 #else
                     minCfl = min(minCfl,cellCfl)
 #endif
@@ -1345,55 +1313,55 @@ Subroutine hy_getRiemannState(tileDesc,U,blkLimits,loGC,hiGC,dt,del,&
   do k=k0-2-k3+kHydro*k3,kmax+2+k3-kHydro*k3
      do j=j0-2-k3+kHydro*k2,jmax+2+k3-kHydro*k2
         do i=i0-2-k3+kHydro,imax+2+k3-kHydro
-           ! Extra stencil is needed for 3D to correctly calculate transverse fluxes 
+           ! Extra stencil is needed for 3D to correctly calculate transverse fluxes
            !(i.e., cross derivatives in x,y, & z)
 
            ! (1) costruct Godunov flux for GLM-Psi (GMLP_VAR)
-           BxStar(i,j,k) = ( scrchFaceXPtr(HY_P06_FACEXPTR_VAR,i-1,j,  k  )&
-                            +scrchFaceXPtr(HY_N06_FACEXPTR_VAR,i,  j,  k  ))*0.5
+           BxStar(i+0,j+0,k+0) = ( scrchFaceXPtr(HY_P06_FACEXPTR_VAR,i-1,j+0,k+0)&
+                            +scrchFaceXPtr(HY_N06_FACEXPTR_VAR,i+0,j+0,k+0))*0.5
 
-           BxStar(i,j,k) = BxStar(i,j,k) - 0.5/hy_C_hyp*&
-                           ( scrchFaceXPtr(HY_N09_FACEXPTR_VAR,i,  j,  k  ) &
-                            -scrchFaceXPtr(HY_P09_FACEXPTR_VAR,i-1,j,  k  ))
+           BxStar(i+0,j+0,k+0) = BxStar(i+0,j+0,k+0) - 0.5/hy_C_hyp*&
+                           ( scrchFaceXPtr(HY_N09_FACEXPTR_VAR,i+0,j+0,k+0) &
+                            -scrchFaceXPtr(HY_P09_FACEXPTR_VAR,i-1,j+0,k+0))
 #if NDIM > 1
-           ByStar(i,j,k) = ( scrchFaceYPtr(HY_P07_FACEYPTR_VAR,i,  j-1,k  )&
-                            +scrchFaceYPtr(HY_N07_FACEYPTR_VAR,i,  j,  k  ))*0.5
+           ByStar(i+0,j+0,k+0) = ( scrchFaceYPtr(HY_P07_FACEYPTR_VAR,i+0,j-1,k+0)&
+                            +scrchFaceYPtr(HY_N07_FACEYPTR_VAR,i+0,j+0,k+0))*0.5
 
-           ByStar(i,j,k) = ByStar(i,j,k) - 0.5/hy_C_hyp*&
-                           ( scrchFaceYPtr(HY_N09_FACEYPTR_VAR,i,  j,  k  ) &
-                            -scrchFaceYPtr(HY_P09_FACEYPTR_VAR,i,  j-1,k  ))
+           ByStar(i+0,j+0,k+0) = ByStar(i+0,j+0,k+0) - 0.5/hy_C_hyp*&
+                           ( scrchFaceYPtr(HY_N09_FACEYPTR_VAR,i+0,j+0,k+0) &
+                            -scrchFaceYPtr(HY_P09_FACEYPTR_VAR,i+0,j-1,k+0))
 #if NDIM == 3
-           BzStar(i,j,k) = ( scrchFaceZPtr(HY_P08_FACEZPTR_VAR,i,  j,  k-1)&
-                            +scrchFaceZPtr(HY_N08_FACEZPTR_VAR,i,  j,  k  ))*0.5
+           BzStar(i+0,j+0,k+0) = ( scrchFaceZPtr(HY_P08_FACEZPTR_VAR,i+0,j+0,k-1)&
+                            +scrchFaceZPtr(HY_N08_FACEZPTR_VAR,i+0,j+0,k+0))*0.5
 
-           BzStar(i,j,k) = BzStar(i,j,k) - 0.5/hy_C_hyp*&
-                           ( scrchFaceZPtr(HY_N09_FACEZPTR_VAR,i,  j,  k  ) &
-                            -scrchFaceZPtr(HY_P09_FACEZPTR_VAR,i,  j,  k-1))
+           BzStar(i+0,j+0,k+0) = BzStar(i+0,j+0,k+0) - 0.5/hy_C_hyp*&
+                           ( scrchFaceZPtr(HY_N09_FACEZPTR_VAR,i+0,j+0,k+0) &
+                            -scrchFaceZPtr(HY_P09_FACEZPTR_VAR,i+0,j+0,k-1))
 #endif
 #endif
 
 
            ! (2) costruct Godunov flux for normal magnetic fields
-           GLMxStar(i,j,k) = ( scrchFaceXPtr(HY_P09_FACEXPTR_VAR,i-1,j,  k  )&
-                              +scrchFaceXPtr(HY_N09_FACEXPTR_VAR,i,  j,  k  ))*0.5
+           GLMxStar(i+0,j+0,k+0) = ( scrchFaceXPtr(HY_P09_FACEXPTR_VAR,i-1,j+0,k+0)&
+                              +scrchFaceXPtr(HY_N09_FACEXPTR_VAR,i+0,j+0,k+0))*0.5
 
-           GLMxStar(i,j,k) = GLMxStar(i,j,k) - 0.5*hy_C_hyp*&
-                             ( scrchFaceXPtr(HY_N06_FACEXPTR_VAR,i,  j,  k  ) &
-                              -scrchFaceXPtr(HY_P06_FACEXPTR_VAR,i-1,j,  k  ))
+           GLMxStar(i+0,j+0,k+0) = GLMxStar(i+0,j+0,k+0) - 0.5*hy_C_hyp*&
+                             ( scrchFaceXPtr(HY_N06_FACEXPTR_VAR,i+0,j+0,k+0) &
+                              -scrchFaceXPtr(HY_P06_FACEXPTR_VAR,i-1,j+0,k+0))
 #if NDIM > 1
-           GLMyStar(i,j,k) = ( scrchFaceYPtr(HY_P09_FACEYPTR_VAR,i,  j-1,k  )&
-                              +scrchFaceYPtr(HY_N09_FACEYPTR_VAR,i,  j,  k  ))*0.5
+           GLMyStar(i+0,j+0,k+0) = ( scrchFaceYPtr(HY_P09_FACEYPTR_VAR,i+0,j-1,k+0)&
+                              +scrchFaceYPtr(HY_N09_FACEYPTR_VAR,i+0,j+0,k+0))*0.5
 
-           GLMyStar(i,j,k) = GLMyStar(i,j,k) - 0.5*hy_C_hyp*&
-                             ( scrchFaceYPtr(HY_N07_FACEYPTR_VAR,i,  j,  k  ) &
-                              -scrchFaceYPtr(HY_P07_FACEYPTR_VAR,i,  j-1,k  ))
+           GLMyStar(i+0,j+0,k+0) = GLMyStar(i+0,j+0,k+0) - 0.5*hy_C_hyp*&
+                             ( scrchFaceYPtr(HY_N07_FACEYPTR_VAR,i+0,j+0,k+0) &
+                              -scrchFaceYPtr(HY_P07_FACEYPTR_VAR,i+0,j-1,k+0))
 #if NDIM == 3
-           GLMzStar(i,j,k) = ( scrchFaceZPtr(HY_P09_FACEZPTR_VAR,i,  j,  k-1)&
-                              +scrchFaceZPtr(HY_N09_FACEZPTR_VAR,i,  j,  k  ))*0.5
+           GLMzStar(i+0,j+0,k+0) = ( scrchFaceZPtr(HY_P09_FACEZPTR_VAR,i+0,j+0,k-1)&
+                              +scrchFaceZPtr(HY_N09_FACEZPTR_VAR,i+0,j+0,k+0))*0.5
 
-           GLMzStar(i,j,k) = GLMzStar(i,j,k) - 0.5*hy_C_hyp*&
-                             ( scrchFaceZPtr(HY_N08_FACEZPTR_VAR,i,  j,  k  ) &
-                              -scrchFaceZPtr(HY_P08_FACEZPTR_VAR,i,  j,  k-1))
+           GLMzStar(i+0,j+0,k+0) = GLMzStar(i+0,j+0,k+0) - 0.5*hy_C_hyp*&
+                             ( scrchFaceZPtr(HY_N08_FACEZPTR_VAR,i+0,j+0,k+0) &
+                              -scrchFaceZPtr(HY_P08_FACEZPTR_VAR,i+0,j+0,k-1))
 #endif
 #endif
 
@@ -1406,28 +1374,28 @@ Subroutine hy_getRiemannState(tileDesc,U,blkLimits,loGC,hiGC,dt,del,&
      do j=j0-2-k3+kHydro*k2,jmax+2+k3-kHydro*k2
         do i=i0-2-k3+kHydro,imax+2+k3-kHydro
            ! GLM psi x-Riemann state
-           scrchFaceXPtr(HY_P09_FACEXPTR_VAR,i,j,k) = GLMxSTar(i+1,j,  k  )
-           scrchFaceXPtr(HY_N09_FACEXPTR_VAR,i,j,k) = GLMxStar(i,  j,  k  )
+           scrchFaceXPtr(HY_P09_FACEXPTR_VAR,i+0,j+0,k+0) = GLMxSTar(i+1,j+0,k+0)
+           scrchFaceXPtr(HY_N09_FACEXPTR_VAR,i+0,j+0,k+0) = GLMxStar(i+0,j+0,k+0)
 
            ! magx
-           scrchFaceXPtr(HY_P06_FACEXPTR_VAR,i,j,k) = BxStar  (i+1,j,  k  )
-           scrchFaceXPtr(HY_N06_FACEXPTR_VAR,i,j,k) = BxStar  (i,  j,  k  )
+           scrchFaceXPtr(HY_P06_FACEXPTR_VAR,i+0,j+0,k+0) = BxStar(i+1,j+0,k+0)
+           scrchFaceXPtr(HY_N06_FACEXPTR_VAR,i+0,j+0,k+0) = BxStar(i+0,j+0,k+0)
 
 #if NDIM > 1
            ! GLM psi y-Riemann state
-           scrchFaceYPtr(HY_P09_FACEYPTR_VAR,i,j,k) = GLMySTar(i,  j+1,k  )
-           scrchFaceYPtr(HY_N09_FACEYPTR_VAR,i,j,k) = GLMyStar(i,  j,  k  )
+           scrchFaceYPtr(HY_P09_FACEYPTR_VAR,i+0,j+0,k+0) = GLMySTar(i+0,j+1,k+0)
+           scrchFaceYPtr(HY_N09_FACEYPTR_VAR,i+0,j+0,k+0) = GLMyStar(i+0,j+0,k+0)
 
-           scrchFaceYPtr(HY_P07_FACEYPTR_VAR,i,j,k) = ByStar  (i,  j+1,k  )
-           scrchFaceYPtr(HY_N07_FACEYPTR_VAR,i,j,k) = ByStar  (i,  j,  k  )
+           scrchFaceYPtr(HY_P07_FACEYPTR_VAR,i+0,j+0,k+0) = ByStar(i+0,j+1,k+0)
+           scrchFaceYPtr(HY_N07_FACEYPTR_VAR,i+0,j+0,k+0) = ByStar(i+0,j+0,k+0)
 
 #if NDIM == 3
            ! GLM psi z-Riemann state
-           scrchFaceZPtr(HY_P09_FACEZPTR_VAR,i,j,k) = GLMzSTar(i,  j,  k+1)
-           scrchFaceZPtr(HY_N09_FACEZPTR_VAR,i,j,k) = GLMzStar(i,  j,  k  )
+           scrchFaceZPtr(HY_P09_FACEZPTR_VAR,i+0,j+0,k+0) = GLMzSTar(i+0,j+0,k+1)
+           scrchFaceZPtr(HY_N09_FACEZPTR_VAR,i+0,j+0,k+0) = GLMzStar(i+0,j+0,k+0)
 
-           scrchFaceZPtr(HY_P08_FACEZPTR_VAR,i,j,k) = BzStar  (i,  j,  k+1)
-           scrchFaceZPtr(HY_N08_FACEZPTR_VAR,i,j,k) = BzStar  (i,  j,  k  )
+           scrchFaceZPtr(HY_P08_FACEZPTR_VAR,i+0,j+0,k+0) = BzStar(i+0,j+0,k+1)
+           scrchFaceZPtr(HY_N08_FACEZPTR_VAR,i+0,j+0,k+0) = BzStar(i+0,j+0,k+0)
 #endif
 #endif
 
@@ -1472,14 +1440,14 @@ contains
     real,   POINTER_INTENT_IN, dimension(:,:,:,:)  ,OPTIONAL :: U
     integer,intent(IN),                       OPTIONAL :: i,j,k
 
-    Wleft (HY_DENS:HY_END_VARS-kGrav) = Vc(HY_DENS:HY_END_VARS-kGrav)
+    Wleft(HY_DENS:HY_END_VARS-kGrav) = Vc(HY_DENS:HY_END_VARS-kGrav)
     Wright(HY_DENS:HY_END_VARS-kGrav) = Vc(HY_DENS:HY_END_VARS-kGrav)
     if (hy_fullSpecMsFluxHandling .AND. hy_numXN > 0 &
          .AND. present(spcR)) then
-       spcL(:,i,j,k,iDir) = &
-            U(SPECIES_BEGIN:MASS_SCALARS_END,i,j,k)
-       spcR(:,i,j,k,iDir) = &
-            U(SPECIES_BEGIN:MASS_SCALARS_END,i,j,k)
+       spcL(:,i+0,j+0,k+0,iDir) = &
+            U(SPECIES_BEGIN:MASS_SCALARS_END,i+0,j+0,k+0)
+       spcR(:,i+0,j+0,k+0,iDir) = &
+            U(SPECIES_BEGIN:MASS_SCALARS_END,i+0,j+0,k+0)
     end if
     cellCfl = min(cellCfl, hy_cflFallbackFactor / real(NDIM))
 

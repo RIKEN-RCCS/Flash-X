@@ -1,4 +1,4 @@
-IF Grid=='UG'
+IF Grid in ['UG','UGSpatialFirst']
    REQUIRES  Grid/GridMain/UG
 ELSE
    REQUIRES  Grid/GridMain/AMR

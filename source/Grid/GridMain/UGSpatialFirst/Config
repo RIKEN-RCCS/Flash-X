@@ -1,0 +1,90 @@
+#Config file for Grid/GridMain/UGSpatialFirst
+
+USESETUPVARS Grid, GridIndexReordered
+
+IF Grid not in ["UGSpatialFirst"]
+   SETUPERROR The setup variable 'Grid' must be "UGSpatialFirst"
+ENDIF
+
+IF not GridIndexReordered
+   SETUPERROR UGSpatialFirst requires the -index-reorder setup option
+ENDIF
+
+
+CONFLICTS IO/IOMain/hdf5/parallel/PM
+CONFLICTS IO/IOMain/hdf5/serial/PM
+
+# add pre-processor symbol FLASH_GRID_UG
+PPDEFINE FLASH_GRID_UG
+PPDEFINE FLASH_GRID_UG_SPATIAL_FIRST
+
+# Lines that begin with 'D' as in 'Description' will end up as
+# comment lines in the setup_params file.  setup_params is
+# written by the setup script and holds all the default 
+# values of parameters.  
+
+# !!! If you add a parameter, please add a description line
+# Format is D <parameter name> <description>
+
+
+D iguard number of guardcells in i direction, not yet used. Meant for nofbs.
+D jguard number of guardcells in j direction, not yet used. Meant for nofbs.
+D kguard number of guardcells in k direction, not yet used. Meant for nofbs.
+USESETUPVARS SupportWeno, SupportPpmUpwind
+IF SupportWeno or SupportPpmUpwind
+  PARAMETER iguard INTEGER 6
+  PARAMETER jguard INTEGER 6
+  PARAMETER kguard INTEGER 6
+ELSE
+  PARAMETER iguard INTEGER 4
+  PARAMETER jguard INTEGER 4
+  PARAMETER kguard INTEGER 4
+ENDIF
+
+D iGridSize Global number of interior cells in the i direction
+D & ONLY needed when running in NON_FIXED_BLOCKSIZE mode
+D & (ie. don't need for Paramesh or simple Uniform Grid)
+PARAMETER iGridSize INTEGER 1
+
+D jGridSize Global number of interior cells in the j direction
+D & ONLY needed when running in NON_FIXED_BLOCKSIZE mode
+D & (ie. don't need for Paramesh or simple Uniform Grid)
+PARAMETER jGridSize INTEGER 1
+
+D kGridSize Global number of interior cells in the k direction
+D & ONLY needed when running in NON_FIXED_BLOCKSIZE mode
+D & (ie. don't need for Paramesh or simple Uniform Grid)
+PARAMETER kGridSize INTEGER 1
+
+D nblockx number of blocks along X - ignored by UG Grid
+PARAMETER nblockx INTEGER 1
+
+D nblocky number of blocks along Y - ignored by UG Grid
+PARAMETER nblocky INTEGER 1
+
+D nblockz number of blocks along Z - ignored by UG Grid
+PARAMETER nblockz INTEGER 1
+
+
+D flux_correct turns flux correction on or off.
+D & In UG always false since all blocks are on the same level.
+PARAMETER flux_correct BOOLEAN false
+
+D compute_grid_size compute grid size in the case of non-fixed-block size,
+D & non fixed block size mode means block dims are not specified at compile time
+PARAMETER compute_grid_size BOOLEAN true
+
+D smlrho            Cutoff value for density	
+PARAMETER smlrho	REAL	1.E-10	
+
+D smallp            Cutoff value for pressure
+PARAMETER smallp	REAL	1.E-10	
+
+D smallt            Cutoff value for temperature
+PARAMETER smallt	REAL	1.E-10	
+
+D smallu            Cutoff value for velocity
+PARAMETER smallu	REAL	1.E-10	
+
+D flux_correct_perLevel not really meaningful with UG
+PARAMETER flux_correct_perLevel BOOLEAN false

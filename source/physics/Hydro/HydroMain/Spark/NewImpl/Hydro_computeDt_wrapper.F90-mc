@@ -1,0 +1,64 @@
+! Host compatibility entry point for Hydro_computeDt; no magnetic fields.
+subroutine Hydro_computeDt(blockDesc,x,dx,uxgrid,y,dy,uygrid,z,dz,uzgrid, &
+                           blkLimits,blkLimitsGC,U,dtCheck,dtMinLoc,extraInfo)
+  use Hydro_data, only: hy_geometry,hy_lChyp,hy_cfl,hy_meshMe,hy_useHydro, &
+                       hy_hydroComputeDtFirstCall,hy_updateHydroFluxes
+  use Grid_tile, only: Grid_tile_t
+  use newimpl_hydro, only: HY_OK,HY_BAD_INPUT,HY_BAD_STATE
+  use newimpl_dt, only: DT_CARTESIAN,DT_CYLINDRICAL,DT_SPHERICAL
+  use, intrinsic :: ieee_arithmetic, only: ieee_is_finite
+  !$macro_imports
+  implicit none
+#include "Simulation.h"
+#include "constants.h"
+#ifdef SPARK_GLM
+#error NewImpl timestep currently supports hydrodynamics only
+#endif
+  integer, parameter :: rk=kind(1.0)
+  type(Grid_tile_t), intent(in) :: blockDesc
+  integer, intent(in) :: blkLimits(LOW:HIGH,MDIM),blkLimitsGC(LOW:HIGH,MDIM)
+  real, intent(in) :: x(blkLimitsGC(LOW,1):blkLimitsGC(HIGH,1)),dx(blkLimitsGC(LOW,1):blkLimitsGC(HIGH,1)),uxgrid(blkLimitsGC(LOW,1):blkLimitsGC(HIGH,1))
+  real, intent(in) :: y(blkLimitsGC(LOW,2):blkLimitsGC(HIGH,2)),dy(blkLimitsGC(LOW,2):blkLimitsGC(HIGH,2)),uygrid(blkLimitsGC(LOW,2):blkLimitsGC(HIGH,2))
+  real, intent(in) :: z(blkLimitsGC(LOW,3):blkLimitsGC(HIGH,3)),dz(blkLimitsGC(LOW,3):blkLimitsGC(HIGH,3)),uzgrid(blkLimitsGC(LOW,3):blkLimitsGC(HIGH,3))
+  real, pointer :: U(:,:,:,:)
+  real, intent(inout) :: dtCheck
+  integer, intent(inout) :: dtMinLoc(5)
+  real, optional, intent(inout) :: extraInfo
+  integer :: block,cellLo(3),cellHi(3),lineLo(3),lineHi(3),ndim,map(6),geometry,level,rank
+  integer :: i,j,k,status,failedCell(3),location(5)
+  real(rk) :: cfl,sound,inverse(3),rate,speed,maxRate,maxSpeed
+  !$macro_declarations
+  if (.not.hy_useHydro .or. .not.hy_updateHydroFluxes) return
+  hy_hydroComputeDtFirstCall=.false.
+  block=1; ndim=NDIM; cellLo=blkLimits(LOW,:); cellHi=blkLimits(HIGH,:)
+  lineLo=blkLimitsGC(LOW,:); lineHi=blkLimitsGC(HIGH,:)
+  map=[DENS_VAR,VELX_VAR,VELY_VAR,VELZ_VAR,PRES_VAR,GAMC_VAR]
+  cfl=hy_cfl; level=blockDesc%level; rank=hy_meshMe
+  geometry=DT_CARTESIAN
+  if (hy_geometry==CYLINDRICAL) geometry=DT_CYLINDRICAL
+  if (hy_geometry==SPHERICAL) geometry=DT_SPHERICAL
+    status=HY_BAD_INPUT; failedCell=0
+    if (ndim<1 .or. ndim>3 .or. block<1 .or. any(cellHi<cellLo)) call Driver_abort("NewImpl: invalid timestep calculation")
+    if (any(map<1) .or. any(lineLo>cellLo) .or. any(lineHi<cellHi)) call Driver_abort("NewImpl: invalid timestep calculation")
+    if (geometry<DT_CARTESIAN .or. geometry>DT_SPHERICAL) call Driver_abort("NewImpl: invalid timestep calculation")
+    if (.not.ieee_is_finite(cfl) .or. cfl<=0._rk) call Driver_abort("NewImpl: invalid timestep calculation")
+    if (.not.all(ieee_is_finite([dtCheck,hy_lChyp]))) call Driver_abort("NewImpl: invalid timestep calculation")
+    if (dtCheck<=0._rk .or. hy_lChyp<0._rk) call Driver_abort("NewImpl: invalid timestep calculation")
+    maxRate=0._rk; maxSpeed=hy_lChyp; location=0
+    do k=cellLo(3),cellHi(3)
+      do j=cellLo(2),cellHi(2)
+        do i=cellLo(1),cellHi(1)
+          failedCell=[i,j,k]
+          @hy_acousticSpeed(U,map,block,i,j,k,0._rk,sound,status)@
+          if (status/=HY_OK) call Driver_abort("NewImpl: invalid timestep calculation")
+          @hy_dtCellMetrics(x,y,dx,dy,dz,cellLo,i,j,k,ndim,geometry,inverse,status)@
+          if (status/=HY_OK) call Driver_abort("NewImpl: invalid timestep calculation")
+          @hy_dtCellRate(U,map,block,i,j,k,ndim,uxgrid,uygrid,uzgrid,sound,inverse,rate,speed,status)@
+          if (status/=HY_OK) call Driver_abort("NewImpl: invalid timestep calculation")
+          @hy_reduceDtRate(rate,speed,i,j,k,level,rank,maxRate,maxSpeed,location)@
+        end do
+      end do
+    end do
+    @hy_commitDtLimit(maxRate,cfl,location,dtCheck,dtMinLoc)@
+    hy_lChyp=maxSpeed; status=HY_OK; failedCell=0
+end subroutine

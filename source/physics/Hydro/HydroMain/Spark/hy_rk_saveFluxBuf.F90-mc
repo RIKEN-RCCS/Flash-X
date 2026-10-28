@@ -31,7 +31,6 @@
 !! @param loGC            Lower indices including guard cells
 !<
 
-!!Reorder(4): fl[xyz], fluxBuf[XYZ]
 !!VARIANTS(GPU): hy_rk_saveFluxBuf
 
 subroutine hy_rk_saveFluxBuf(stage, fluxBufX, fluxBufY, fluxBufZ, &
@@ -52,8 +51,8 @@ subroutine hy_rk_saveFluxBuf(stage, fluxBufX, fluxBufY, fluxBufZ, &
 
    integer, intent(IN) :: stage, lo(3), loGC(3)
 
-   real, dimension(1:, lo(1):, lo(2):, lo(3):), intent(IN OUT) :: fluxBufX, fluxBufY, fluxBufZ
-   real, dimension(1:, loGC(1):, loGC(2):, loGC(3):), intent(IN) :: flx, fly, flz
+   real, @M dim4, intent(IN OUT) :: fluxBufX, fluxBufY, fluxBufZ
+   real, @M dim4gc, intent(IN) :: flx, fly, flz
    integer, dimension(LOW:HIGH, MDIM), intent(IN) :: blkLimits
    real, dimension(loGC(1):, loGC(2):, loGC(3):), intent(IN) :: fareaX, fareaY, fareaZ
 

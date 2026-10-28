@@ -6,7 +6,7 @@ REQUIRES flashUtilities/sorting
 
 USESETUPVARS Grid
 
-IF Grid=='UG'
+IF Grid in ['UG','UGSpatialFirst']
   REQUESTS Grid/GridParticles/GridParticlesMove/ParticlesOwned/UG/Directional
 ELSE
   REQUESTS Grid/GridParticles/GridParticlesMove/ParticlesOwned/Paramesh

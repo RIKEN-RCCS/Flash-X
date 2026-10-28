@@ -1,0 +1,94 @@
+! Serial Cartesian hydrodynamic adapter; replaces the legacy external symbol.
+subroutine hy_rk_updateSoln(stage,starState,tmpState,grav,flx,fly,flz, &
+    deltas,fareaX,fareaY,fareaZ,cvol,xCenter,xLeft,xRight,yLeft,yRight, &
+    dt,dtOld,limits,lo,loGC)
+  use Hydro_data, only: hy_coeffArray,hy_geometry,hy_smallE,hy_smalldens
+  use newimpl_hydro, only: HY_OK,HY_BAD_INPUT,HY_BAD_STATE
+  use, intrinsic :: ieee_arithmetic, only: ieee_is_finite
+  !$macro_imports
+  implicit none
+#include "Simulation.h"
+#include "constants.h"
+#include "Spark.h"
+#if defined(SPARK_GLM) || NSPECIES+NMASS_SCALARS>0
+#error NewImpl solution update requires hydrodynamics without species or mass scalars
+#endif
+  integer, parameter :: rk=kind(1.0)
+  integer, intent(in) :: stage,lo(3),loGC(3),limits(LOW:HIGH,MDIM,MAXSTAGE)
+  real, intent(inout) :: starState(1:,loGC(1):,loGC(2):,loGC(3):)
+  @update_tmp_declaration@
+  real, intent(in) :: grav(1:,loGC(1):,loGC(2):,loGC(3):)
+  real, intent(in) :: flx(1:,loGC(1):,loGC(2):,loGC(3):)
+  real, intent(in) :: fly(1:,loGC(1):,loGC(2):,loGC(3):)
+  real, intent(in) :: flz(1:,loGC(1):,loGC(2):,loGC(3):)
+  real, intent(in) :: deltas(MDIM),dt,dtOld
+  real, intent(in) :: fareaX(loGC(1):,loGC(2):,loGC(3):)
+  real, intent(in) :: fareaY(loGC(1):,loGC(2):,loGC(3):),fareaZ(loGC(1):,loGC(2):,loGC(3):)
+  real, intent(in) :: cvol(loGC(1):,loGC(2):,loGC(3):),xCenter(loGC(1):)
+  real, intent(in) :: xLeft(loGC(1):),xRight(loGC(1):),yLeft(loGC(2):),yRight(loGC(2):)
+  integer :: block,cellLo(3),cellHi(3),nDim,stateMap(6),fluxMap(5),gravityMap(3),potentialMap(2)
+  integer :: i,j,k,status,failedCell(3)
+  real(rk) :: spacing(3),coefficients(3),densityFloor,energyFloor,theta
+  real(rk) :: u0(5),us(5),source(5),divergence(5),updated(5)
+  real(rk) :: rho,velocity(3),totalEnergy,internalEnergy,phi0,phiOld,phiStage,phiNew
+  logical :: gravityEnabled,potentialEnabled
+  !$macro_declarations
+  if (hy_geometry/=CARTESIAN) call Driver_abort("NewImpl: update requires Cartesian geometry")
+  if (stage<1 .or. stage>MAXSTAGE) call Driver_abort("NewImpl: invalid stage")
+  block=1; nDim=NDIM; cellLo=limits(LOW,:,stage); cellHi=limits(HIGH,:,stage)
+  spacing=deltas; coefficients=hy_coeffArray(stage,:)
+  densityFloor=hy_smalldens; energyFloor=hy_smallE
+  stateMap=[DENS_VAR,VELX_VAR,VELY_VAR,VELZ_VAR,ENER_VAR,EINT_VAR]
+  fluxMap=[HY_MASS,HY_XMOM,HY_YMOM,HY_ZMOM,HY_ENER]; gravityMap=[1,2,3]
+  gravityEnabled=.false.; potentialEnabled=.false.; potentialMap=0
+#ifdef GRAVITY
+  gravityEnabled=.true.
+#endif
+#ifdef GPOT_VAR
+  potentialEnabled=.true.; potentialMap=[GPOT_VAR,GPOL_VAR]
+#endif
+    status=HY_BAD_INPUT; failedCell=0
+    if (nDim<1 .or. nDim>3 .or. block<1 .or. any(cellHi<cellLo)) call Driver_abort("NewImpl: invalid solution update")
+    if (any(stateMap<1) .or. any(fluxMap<1)) call Driver_abort("NewImpl: invalid solution update")
+    if (gravityEnabled .and. any(gravityMap<1)) call Driver_abort("NewImpl: invalid solution update")
+    if (potentialEnabled .and. any(potentialMap<1)) call Driver_abort("NewImpl: invalid solution update")
+    if (.not.all(ieee_is_finite(spacing(1:nDim))) .or. any(spacing(1:nDim)<=0._rk)) call Driver_abort("NewImpl: invalid solution update")
+    if (.not.all(ieee_is_finite(coefficients))) call Driver_abort("NewImpl: invalid solution update")
+    if (.not.all(ieee_is_finite([dt,densityFloor,energyFloor]))) call Driver_abort("NewImpl: invalid solution update")
+    if (densityFloor<=0._rk .or. energyFloor<0._rk) call Driver_abort("NewImpl: invalid solution update")
+    if (potentialEnabled) then
+      if (.not.ieee_is_finite(dtOld) .or. dtOld==0._rk) call Driver_abort("NewImpl: invalid solution update")
+    end if
+    theta=coefficients(3)*dt
+    if (.not.ieee_is_finite(theta)) call Driver_abort("NewImpl: invalid solution update")
+    do k=cellLo(3),cellHi(3)
+      do j=cellLo(2),cellHi(2)
+        do i=cellLo(1),cellHi(1)
+          failedCell=[i,j,k]; status=HY_BAD_STATE
+          @hy_loadUpdateConservative(tmpState,stateMap,block,i,j,k,u0)@
+          @hy_loadUpdateConservative(starState,stateMap,block,i,j,k,us)@
+          @hy_updateGravitySource(us,grav,gravityMap,block,i,j,k,gravityEnabled,source)@
+          @hy_updateFluxDivergence(flx,fly,flz,fluxMap,block,i,j,k,nDim,spacing,divergence)@
+          if (.not.all(ieee_is_finite(u0)) .or. .not.all(ieee_is_finite(us))) call Driver_abort("NewImpl: invalid solution update")
+          if (.not.all(ieee_is_finite(source)) .or. .not.all(ieee_is_finite(divergence))) call Driver_abort("NewImpl: invalid solution update")
+          @hy_combineUpdate(u0,us,source,divergence,coefficients,theta,updated)@
+          if (.not.all(ieee_is_finite(updated))) call Driver_abort("NewImpl: invalid solution update")
+          @hy_recoverUpdatedHydro(updated,densityFloor,energyFloor,rho,velocity,totalEnergy,internalEnergy)@
+          if (.not.all(ieee_is_finite([rho,velocity,totalEnergy,internalEnergy]))) call Driver_abort("NewImpl: invalid solution update")
+          if (potentialEnabled) then
+            phi0=@cell_ref(tmpState,potentialMap(1),block,i,j,k)@
+            phiOld=@cell_ref(tmpState,potentialMap(2),block,i,j,k)@
+            phiStage=@cell_ref(starState,potentialMap(1),block,i,j,k)@
+            if (.not.all(ieee_is_finite([phi0,phiOld,phiStage]))) call Driver_abort("NewImpl: invalid solution update")
+            @hy_extrapolatePotential(phi0,phiOld,phiStage,coefficients,theta,dtOld,phiNew)@
+            if (.not.ieee_is_finite(phiNew)) call Driver_abort("NewImpl: invalid solution update")
+          end if
+          @hy_storeUpdatedHydro(starState,stateMap,block,i,j,k,rho,velocity,totalEnergy,internalEnergy)@
+          if (potentialEnabled) then
+            @cell_ref(starState,potentialMap(1),block,i,j,k)@=phiNew
+          end if
+        end do
+      end do
+    end do
+    status=HY_OK; failedCell=0
+end subroutine

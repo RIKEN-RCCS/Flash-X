@@ -20,7 +20,6 @@
 !!VARIANTS(GPU): Hydro_prepBlock, &
 !!               hy_rk_shockDetect, &
 !!               hy_rk_initSolnScratch
-!!Reorder(4): Uin,hy_starState,hy_tmpState
 subroutine Hydro_prepBlock(Uin, blkLimits, blkLimitsGC, deltas, &
                            hy_Vc, hy_starState, hy_tmpState, &
                            hy_xCenter, hy_yCenter, hy_zCenter, &
@@ -54,8 +53,8 @@ subroutine Hydro_prepBlock(Uin, blkLimits, blkLimitsGC, deltas, &
    real, dimension(loGC(1):), intent(IN OUT) :: hy_xLeft, hy_xRight
    real, dimension(loGC(2):), intent(IN OUT) :: hy_yLeft, hy_yRight
    real, dimension(loGC(1):, loGC(2):, loGC(3):), intent(IN OUT) :: hy_fareaX, hy_fareaY, hy_fareaZ, hy_cvol
-   real, dimension(1:, loGC(1):, loGC(2):, loGC(3):), intent(IN OUT) :: Uin
-   real, dimension(1:, loGC(1):, loGC(2):, loGC(3):), intent(IN OUT) :: hy_starState, hy_tmpState
+   real, @M dim4gc, intent(IN OUT) :: Uin
+   real, @M dim4gc, intent(IN OUT) :: hy_starState, hy_tmpState
    real, dimension(loGC(1):, loGC(2):, loGC(3):), intent(IN OUT) :: hy_Vc
 
    real :: divB

@@ -30,7 +30,6 @@
 !! @param loGC            Lower indices including guard cells
 !<
 
-!!Reorder(4):starState
 !!VARIANTS(GPU): hy_rk_getGraveAccel, Driver_abort
 subroutine hy_rk_getGraveAccel(starState, grav, &
                                radCenter, thtCenter, deltas, &
@@ -47,7 +46,7 @@ subroutine hy_rk_getGraveAccel(starState, grav, &
 #include "constants.h"
 
   integer, intent(IN) :: loGC(3)
-  real, dimension(1:, loGC(1):, loGC(2):, loGC(3):), intent(IN) :: starState
+  real, @M dim4gc, intent(IN) :: starState
   real, dimension(1:, loGC(1):, loGC(2):, loGC(3):), intent(OUT) :: grav
   real, dimension(loGC(1):), intent(IN) :: radCenter
   real, dimension(loGC(2):), intent(IN) :: thtCenter
@@ -87,12 +86,12 @@ subroutine hy_rk_getGraveAccel(starState, grav, &
            delinv(IAXIS:NDIM) = 0.5 / deltas(IAXIS:NDIM)
 
            ! d/dx
-           delgpot(IAXIS) = starState(GPOT_VAR,i-1,j,k) - starState(GPOT_VAR,i+1,j,k)
+           delgpot(IAXIS) = starState(@M blkoff(GPOT_VAR,i,-1,j,+0,k,+0)) - starState(@M blkoff(GPOT_VAR,i,+1,j,+0,k,+0))
            grav(IAXIS,i,j,k) = delinv(IAXIS) * delgpot(IAXIS)
 #if NDIM >= 2
            ! d/dy
            if (hy_geometry == SPHERICAL) delinv(JAXIS) = delinv(JAXIS) / radCenter(i)
-           delgpot(JAXIS) = starState(GPOT_VAR,i,j-1,k) - starState(GPOT_VAR,i,j+1,k)
+           delgpot(JAXIS) = starState(@M blkoff(GPOT_VAR,i,+0,j,-1,k,+0)) - starState(@M blkoff(GPOT_VAR,i,+0,j,+1,k,+0))
            grav(JAXIS,i,j,k) = delinv(JAXIS) * delgpot(JAXIS)
 #endif
 #if NDIM == 3
@@ -102,7 +101,7 @@ subroutine hy_rk_getGraveAccel(starState, grav, &
            else if (hy_geometry == CYLINDRICAL) then
               delinv(KAXIS) = delinv(KAXIS) / radCenter(i)
            end if
-           delgpot(KAXIS) = starState(GPOT_VAR,i,j,k-1) - starState(GPOT_VAR,i,j,k+1)
+           delgpot(KAXIS) = starState(@M blkoff(GPOT_VAR,i,+0,j,+0,k,-1)) - starState(@M blkoff(GPOT_VAR,i,+0,j,+0,k,+1))
            grav(KAXIS,i,j,k) = delinv(KAXIS) * delgpot(KAXIS)
 #endif
         end do

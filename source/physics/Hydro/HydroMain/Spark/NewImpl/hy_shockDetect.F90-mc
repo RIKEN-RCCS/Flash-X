@@ -1,0 +1,56 @@
+module newimpl_shock
+  use newimpl_hydro, only: cell_field,HY_OK,HY_BAD_INPUT,HY_BAD_STATE
+  use, intrinsic :: ieee_arithmetic, only: ieee_is_finite
+  implicit none
+  private
+  integer, parameter :: rk=selected_real_kind(15,307)
+  public :: hy_shockDetect
+contains
+  subroutine hy_shockDetect(state,soundWork,block,cellLo,cellHi,detectLo,detectHi,ndim,map,shockVariable, &
+                            densityGuard,beta,delta,status,failedCell)
+    !$macro_imports
+    type(cell_field), intent(inout) :: state,soundWork
+    integer, intent(in) :: block,cellLo(3),cellHi(3),detectLo(3),detectHi(3),ndim,map(6),shockVariable
+    real(rk), intent(in) :: densityGuard,beta,delta
+    integer, intent(out) :: status,failedCell(3)
+    integer :: i,j,k,innerLo(3),innerHi(3)
+    real(rk) :: sound,minPressure,minSound,divVelocity,pressureGradient,marker
+    !$macro_declarations
+    status=HY_OK; failedCell=0
+    if (shockVariable<=0) return
+    status=HY_BAD_INPUT
+    if (ndim<1 .or. ndim>3 .or. block<1 .or. any(cellHi<cellLo)) return
+    if (any(map<1) .or. any(map==shockVariable)) return
+    if (.not.all(ieee_is_finite([densityGuard,beta,delta]))) return
+    if (densityGuard<=0._rk .or. beta<0._rk .or. delta<0._rk) return
+    innerLo=cellLo; innerHi=cellHi
+    innerLo(1:ndim)=cellLo(1:ndim)+1; innerHi(1:ndim)=cellHi(1:ndim)-1
+    if (any(detectLo<innerLo) .or. any(detectHi>innerHi)) then
+      status=HY_BAD_INPUT; return
+    end if
+    do k=cellLo(3),cellHi(3)
+      do j=cellLo(2),cellHi(2)
+        do i=cellLo(1),cellHi(1)
+          failedCell=[i,j,k]
+          @hy_acousticSpeed(state,map,block,i,j,k,densityGuard,sound,status)@
+          if (status/=HY_OK) return
+          @flat_ref(soundWork,block,i,j,k)@=sound
+          @cell_ref(state,shockVariable,block,i,j,k)@=0._rk
+        end do
+      end do
+    end do
+    do k=detectLo(3),detectHi(3)
+      do j=detectLo(2),detectHi(2)
+        do i=detectLo(1),detectHi(1)
+          failedCell=[i,j,k]; status=HY_BAD_STATE
+          @hy_shockNeighborhood(state,soundWork,map,block,i,j,k,ndim,minPressure,minSound)@
+          @hy_shockDifferences(state,map,block,i,j,k,ndim,divVelocity,pressureGradient)@
+          if (.not.all(ieee_is_finite([divVelocity,pressureGradient]))) return
+          @hy_classifyShock(minPressure,minSound,divVelocity,pressureGradient,beta,delta,marker)@
+          @cell_ref(state,shockVariable,block,i,j,k)@=marker
+        end do
+      end do
+    end do
+    status=HY_OK; failedCell=0
+  end subroutine
+end module

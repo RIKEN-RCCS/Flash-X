@@ -19,8 +19,7 @@ Grid +=  gr_hypreInterface.o gr_hypreInit.o gr_hypreFinalize.o
 
 Grid +=  gr_amrexMultigridInterface.o gr_amrexMultigridInit.o gr_amrexMultigridFinalize.o
 
-Grid += gr_mpoleAllocateRadialArrays.o   \
-        gr_mpoleCen1Dspherical.o         \
+Grid += gr_mpoleCen1Dspherical.o         \
 	gr_mpoleCen2Dspherical.o         \
         gr_mpoleCen2Dcylindrical.o       \
 	gr_mpoleCen3Dspherical.o         \

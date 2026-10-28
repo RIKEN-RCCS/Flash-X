@@ -1,0 +1,145 @@
+program test_update
+  use newimpl_hydro
+  use newimpl_update
+  !$macro_imports
+  implicit none
+  integer, parameter :: rk=selected_real_kind(15,307)
+  type(cell_field) :: ref,stage,gravity
+  type(flux_field) :: flux
+  integer :: lo(3),hi(3),map(6),fm(5),gm(3),pm(2),b,i,j,k,d,v,ndim,status,failed(3)
+  real(rk) :: spacing(3),coeff(3),u0(5),us(5),source(5),div(5),expected(5)
+  real(rk) :: rho,vel(3),qt,ei,got,theta,updated(5),massSum
+  !$macro_declarations
+  lo=1; hi=2; map=[8,3,10,2,6,9]; fm=[7,2,8,4,6]; gm=[2,4,1]; pm=[5,11]
+  spacing=[0.5_rk,0.25_rk,2._rk]; coeff=[0.2_rk,0.7_rk,0.4_rk]; theta=0.2_rk
+  @hy_allocateCell(ref,12,lo,hi,2)@
+  @hy_allocateCell(stage,12,lo,hi,2)@
+  @hy_allocateCell(gravity,4,lo,hi,2)@
+  @hy_allocateFlux(flux,8,lo,hi+1,3,2)@
+  u0=[2._rk,0.2_rk,0.4_rk,0.6_rk,20._rk]
+  us=[3._rk,1.2_rk,-1.5_rk,1.8_rk,36._rk]
+  source=[0._rk,3._rk,-6._rk,9._rk,9.6_rk]
+  do ndim=1,3
+    do b=1,2
+      do k=1,3
+        do j=1,3
+          do i=1,3
+            do d=1,3
+              do v=1,5
+                @face_ref(flux,fm(v),b,d,i,j,k)@=0.1_rk*v*d* &
+                  merge(i,merge(j,k,d==2),d==1)
+              end do
+            end do
+          end do
+        end do
+      end do
+      do k=1,2
+        do j=1,2
+          do i=1,2
+            @cell_ref(ref,map(1),b,i,j,k)@=2._rk
+            @cell_ref(stage,map(1),b,i,j,k)@=3._rk
+            do d=1,3
+              @cell_ref(ref,map(1+d),b,i,j,k)@=u0(1+d)/2._rk
+              @cell_ref(stage,map(1+d),b,i,j,k)@=us(1+d)/3._rk
+              @cell_ref(gravity,gm(d),b,i,j,k)@=source(1+d)/3._rk
+            end do
+            @cell_ref(ref,map(5),b,i,j,k)@=10._rk
+            @cell_ref(stage,map(5),b,i,j,k)@=12._rk
+            @cell_ref(ref,map(6),b,i,j,k)@=1000._rk
+            @cell_ref(stage,map(6),b,i,j,k)@=2000._rk
+            @cell_ref(ref,pm(1),b,i,j,k)@=4._rk
+            @cell_ref(ref,pm(2),b,i,j,k)@=2._rk
+            @cell_ref(stage,pm(1),b,i,j,k)@=3._rk
+            @cell_ref(stage,pm(2),b,i,j,k)@=9._rk
+            @cell_ref(stage,12,b,i,j,k)@=77._rk
+          end do
+        end do
+      end do
+      call hy_updateSolution(ref,stage,flux,gravity,b,lo,hi,ndim,spacing,coeff,0.5_rk,2._rk, &
+                             map,fm,gm,pm,0.01_rk,0.001_rk,.true.,.true.,status,failed)
+      if (status/=HY_OK) stop 1
+      do v=1,5
+        div(v)=0
+        do d=1,ndim
+          div(v)=div(v)+0.1_rk*v*d/spacing(d)
+        end do
+      end do
+      expected=coeff(1)*u0+coeff(2)*us+theta*(source-div)
+      @hy_recoverUpdatedHydro(expected,0.01_rk,0.001_rk,rho,vel,qt,ei)@
+      got=@cell_ref(stage,map(1),b,1,1,1)@
+      if (abs(got-rho)>1.e-12_rk) stop 2
+      do d=1,3
+        got=@cell_ref(stage,map(1+d),b,1,1,1)@
+        if (abs(got-vel(d))>1.e-12_rk) stop 3
+      end do
+      got=@cell_ref(stage,map(5),b,1,1,1)@
+      if (abs(got-qt)>1.e-12_rk) stop 4
+      got=@cell_ref(stage,map(6),b,1,1,1)@
+      if (abs(got-ei)>1.e-12_rk) stop 5
+      got=@cell_ref(stage,pm(1),b,1,1,1)@
+      if (abs(got-3.1_rk)>1.e-12_rk) stop 6
+      got=@cell_ref(stage,pm(2),b,1,1,1)@
+      if (got/=9._rk) stop 7
+      got=@cell_ref(stage,12,b,1,1,1)@
+      if (got/=77._rk) stop 8
+    end do
+  end do
+  ! Floors preserve provisional momentum and do not reconcile total/internal energy.
+  updated=[0._rk,2._rk,0._rk,0._rk,-0.5_rk]
+  @hy_recoverUpdatedHydro(updated,1._rk,0.1_rk,rho,vel,qt,ei)@
+  if (rho/=1._rk .or. vel(1)/=2._rk .or. qt/=0.1_rk .or. ei/=0.1_rk) stop 9
+  ! Interior face transport telescopes to zero net mass change.
+  do k=1,3
+    do j=1,3
+      do i=1,3
+        do d=1,3
+          do v=1,5
+            @face_ref(flux,fm(v),1,d,i,j,k)@=0._rk
+          end do
+        end do
+        if (i==2) then
+          @face_ref(flux,fm(1),1,1,i,j,k)@=2._rk
+        end if
+      end do
+    end do
+  end do
+  do k=1,2
+    do j=1,2
+      do i=1,2
+        @cell_ref(stage,map(1),1,i,j,k)@=3._rk
+        @cell_ref(stage,map(5),1,i,j,k)@=10._rk
+        do d=1,3
+          @cell_ref(stage,map(1+d),1,i,j,k)@=0._rk
+        end do
+      end do
+    end do
+  end do
+  coeff=[0._rk,1._rk,1._rk]
+  call hy_updateSolution(ref,stage,flux,gravity,1,lo,hi,1,spacing,coeff,0.1_rk,0._rk, &
+                         map,fm,gm,pm,0.01_rk,0.001_rk,.false.,.false.,status,failed)
+  if (status/=HY_OK) stop 13
+  massSum=0
+  do k=1,2
+    do j=1,2
+      do i=1,2
+        massSum=massSum+@cell_ref(stage,map(1),1,i,j,k)@
+      end do
+    end do
+  end do
+  if (abs(massSum-24._rk)>1.e-12_rk) stop 14
+  got=@cell_ref(stage,map(1),1,1,1,1)@
+  if (abs(got-2.6_rk)>1.e-12_rk) stop 15
+  ! Potential-disabled zero dtOld and zero theta are valid hydro operations.
+  coeff=[0._rk,1._rk,0._rk]
+  call hy_updateSolution(ref,stage,flux,gravity,1,lo,hi,3,spacing,coeff,0._rk,0._rk, &
+                         map,fm,gm,pm,0.01_rk,0.001_rk,.false.,.false.,status,failed)
+  if (status/=HY_OK) stop 10
+  call hy_updateSolution(ref,stage,flux,gravity,1,lo,hi,3,spacing,coeff,0._rk,0._rk, &
+                         map,fm,gm,pm,0.01_rk,0.001_rk,.false.,.true.,status,failed)
+  if (status/=HY_BAD_INPUT) stop 11
+  spacing(1)=0
+  call hy_updateSolution(ref,stage,flux,gravity,1,lo,hi,3,spacing,coeff,0._rk,1._rk, &
+                         map,fm,gm,pm,0.01_rk,0.001_rk,.false.,.false.,status,failed)
+  if (status/=HY_BAD_INPUT) stop 12
+  print *, 'update tests passed'
+end program

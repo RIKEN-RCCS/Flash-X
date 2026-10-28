@@ -30,11 +30,6 @@ module gr_mpoleInterface
   implicit none
 
   interface
-     subroutine gr_mpoleAllocateRadialArrays ()
-     end subroutine gr_mpoleAllocateRadialArrays
-  end interface
-
-  interface
      subroutine gr_mpoleCen1Dspherical (idensvar)
        integer, intent (in) :: idensvar
      end subroutine gr_mpoleCen1Dspherical
@@ -223,9 +218,25 @@ module gr_mpoleInterface
   end interface
 
   interface
-     subroutine gr_mpolePotentials (ipotvar,Poisson_factor)
+     subroutine gr_mpolePotentials (ipotvar, Poisson_factor,  &
+                                    gr_mpoleMomentR,          &
+                                    gr_mpoleMomentI,          &
+                                    gr_mpoleScratch,          &
+                                    gr_mpoleMaxQ,             &
+                                    gr_mpoleGravityConstant,  &
+                                    gr_mpoleFourPiInv,        &
+                                    gr_mpoleGeometry,         &
+                                    gr_mpoleRequest)
        integer, intent (in) :: ipotvar
        real,    intent (in) :: Poisson_factor
+       real,           intent (inout) :: gr_mpoleMomentR (1:,0:)
+       real,           intent (inout) :: gr_mpoleMomentI (1:,1:)
+       real,           intent (inout) :: gr_mpoleScratch (1:,1:,1:)
+       integer, intent (in) :: gr_mpoleMaxQ
+       real,    intent (out) :: gr_mpoleGravityConstant
+       real,    intent (in)  :: gr_mpoleFourPiInv
+       integer, intent (in)  :: gr_mpoleGeometry
+       integer, intent (inout) :: gr_mpoleRequest
      end subroutine gr_mpolePotentials
   end interface
 

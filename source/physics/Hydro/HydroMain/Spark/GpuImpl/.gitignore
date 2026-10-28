@@ -1,0 +1,7 @@
+build/
+__pycache__/
+*.mod
+*.o
+build2d/
+validation2d/
+benchmark-results/

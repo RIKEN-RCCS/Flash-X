@@ -20,8 +20,6 @@
 !! @stubref{Hydro}
 !<
 
-!!Reorder(4): hy_fl[xyz],hy_fluxBuf[XYZ],hy_starState,hy_tmpState,Uin
-!!Reorder(4): hy_rope,hy_flux,hy_uPlus,hy_uMinus
 !!NOVARIANTS
 
 #ifdef DEBUG_ALL
@@ -30,7 +28,14 @@
 #endif
 #define DEBUG_GRID_GCMASK
 
+#include "Simulation.h"
+
 subroutine Hydro(timeEndAdv, dt, dtOld, sweepOrder)
+
+#ifdef HY_GPU_AMR
+   use hy_gpu_amr_dump_module, ONLY: hy_gpu_amr_dump
+   use hy_gpu_amr_adapter, ONLY: hy_gpu_amr_hydro, hy_gpu_amr_check
+#endif
 
    use Grid_interface, ONLY: Grid_getTileIterator, &
                              Grid_releaseTileIterator, &
@@ -111,6 +116,9 @@ subroutine Hydro(timeEndAdv, dt, dtOld, sweepOrder)
    integer :: error
 
    if (.NOT. hy_useHydro) return
+#ifdef HY_GPU_AMR
+   call hy_gpu_amr_check()
+#endif
 
    ! Check for some incompatible configuration options; perhaps move to Hydro_init
    @M hy_check_config
@@ -137,13 +145,22 @@ subroutine Hydro(timeEndAdv, dt, dtOld, sweepOrder)
    if (hy_fluxCorrect) call Grid_zeroFluxData()
 
    if (hy_telescoping) then
+#ifdef HY_GPU_AMR
+      call Timers_start("GPU AMR guard fill")
+#endif
       @M hy_globalFillGuardCells
+#ifdef HY_GPU_AMR
+      call Timers_stop("GPU AMR guard fill")
+#endif
    end if
    !-------------------------------------------------------------------!
    !***NO Flux correction    or   Flux correction but NOT per level****!
    !-------------------------------------------------------------------!
    stage = 1
    if ((.NOT. hy_fluxCorrect) .OR. ((hy_fluxCorrect) .AND. (.NOT. hy_fluxCorrectPerLevel))) then
+#ifdef HY_GPU_AMR
+      call hy_gpu_amr_hydro(dt)
+#else
       @M hy_stages_nt !! this is the do loop statement for non-telescoping version
       if (.NOT. hy_telescoping) then
          @M hy_globalFillGuardCells
@@ -243,7 +260,11 @@ subroutine Hydro(timeEndAdv, dt, dtOld, sweepOrder)
       end if
       @M iter_end(Uin)
       @M hy_end_stages_nt
+#endif
       if (hy_fluxCorrect) then
+#ifdef HY_GPU_AMR
+         call Timers_start("GPU AMR reflux")
+#endif
          !Communicate the fine fluxes
          call Grid_communicateFluxes(ALLDIR, UNSPEC_LEVEL)
 
@@ -288,6 +309,9 @@ subroutine Hydro(timeEndAdv, dt, dtOld, sweepOrder)
             @M hy_release_geom
          end if
          @M iter_end(Uin)
+#ifdef HY_GPU_AMR
+         call Timers_stop("GPU AMR reflux")
+#endif
       end if !Flux correction
    else !flux correct per level
 #ifdef DEBUG_HYDRO
@@ -375,13 +399,13 @@ subroutine Hydro(timeEndAdv, dt, dtOld, sweepOrder)
             call Grid_getFluxCorrData_xtra(tileDesc, &
                                            hy_fluxBufX, hy_fluxBufY, hy_fluxBufZ, &
                                            blkLimits(LOW, :), &
-                                           hy_flx(:, xLo:xHi + 1, yLo:yHi, zLo:zHi), &
-                                           hy_fly(:, xLo:xHi, yLo:yHi + K2D, zLo:zHi), &
-                                           hy_flz(:, xLo:xHi, yLo:yHi, zLo:zHi + K3D))
+                                           hy_flx(@M regionall(xLo,xHi,+1,yLo,yHi,+0,zLo,zHi,+0)), &
+                                           hy_fly(@M regionall(xLo,xHi,+0,yLo,yHi,+K2D,zLo,zHi,+0)), &
+                                           hy_flz(@M regionall(xLo,xHi,+0,yLo,yHi,+0,zLo,zHi,+K3D)))
             call hy_rk_correctFluxes(Uin, blkLimits, &
-                                     hy_flx(:, xLo:xHi + 1, yLo:yHi, zLo:zHi), &
-                                     hy_fly(:, xLo:xHi, yLo:yHi + K2D, zLo:zHi), &
-                                     hy_flz(:, xLo:xHi, yLo:yHi, zLo:zHi + K3D), &
+                                     hy_flx(@M regionall(xLo,xHi,+1,yLo,yHi,+0,zLo,zHi,+0)), &
+                                     hy_fly(@M regionall(xLo,xHi,+0,yLo,yHi,+K2D,zLo,zHi,+0)), &
+                                     hy_flz(@M regionall(xLo,xHi,+0,yLo,yHi,+0,zLo,zHi,+K3D)), &
                                      deltas, hy_fareaX, hy_fareaY, hy_fareaZ, hy_cvol, hy_xCenter, &
                                      hy_xLeft, hy_xRight, hy_yLeft, hy_yRight, &
                                      hy_geometry, &
@@ -423,6 +447,11 @@ subroutine Hydro(timeEndAdv, dt, dtOld, sweepOrder)
       end do !loop over levels
 
    end if !Flux correct per Level
+
+#ifdef HY_GPU_AMR
+   ! Dump only after all CPU coarse-fine flux corrections and correction EOS calls.
+   call hy_gpu_amr_dump(timeEndAdv,dt)
+#endif
 
 ! Reset local maximum hyperbolic speed. This will be updated in Hydro_computeDt.
    hy_lChyp = TINY(1.0)

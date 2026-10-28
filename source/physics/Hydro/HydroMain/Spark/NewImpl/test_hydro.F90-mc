@@ -1,0 +1,172 @@
+program test_hydro
+  use newimpl_hydro
+  !$macro_imports
+  implicit none
+  integer, parameter :: rk=selected_real_kind(15,307)
+  type(cell_field) :: data
+  type(flux_field) :: flux
+  type(hydro_workspace) :: work
+  type(hydro_parameters) :: params
+  integer :: lo(3),hi(3),alo(3),ahi(3),map(7),omap(5),i,j,k,b,d,v,status,failed(4),ndim
+  real(rk) :: q(7),ql(7),qr(7),ul(5),ur(5),fl(5),fr(5),usl(5),usr(5),f(5),expected(5)
+  real(rk) :: sl,sr,speed,contact,pstar,cm(3),cp(3),wm(3),wp(3),qm,qplus,stencil(-2:2)
+  integer :: evaluations=0
+  logical :: vacuum
+  !$macro_declarations
+  ! Noncontiguous, permuted maps ensure no assumed variable order in mesh storage.
+  map=[8,3,10,2,6,9,4]; omap=[7,2,8,4,6]
+  lo=[1,1,1]; hi=[2,2,2]; alo=lo-3; ahi=hi+3
+  @hy_allocateCell(data,11,alo,ahi,2)@
+  @hy_allocateFlux(flux,8,lo,hi+1,3,2)@
+  @hy_allocateWorkspace(work,lo-1,hi+1,2)@
+  q=[2._rk,0.4_rk,-0.3_rk,0.2_rk,1._rk,1.4_rk,2.5_rk]
+  do b=1,2
+    do k=alo(3),ahi(3)
+      do j=alo(2),ahi(2)
+        do i=alo(1),ahi(1)
+          do v=1,7
+            @cell_ref(data,map(v),b,i,j,k)@=q(v)
+          end do
+          @cell_ref(data,11,b,i,j,k)@=0._rk
+        end do
+      end do
+    end do
+  end do
+  ! Every direction, both block IDs, flattening on/off, dimensional reductions.
+  do ndim=1,3
+    do b=1,2
+      params%flattening=b==1
+      call hy_getFaceFlux(data,flux,b,lo,hi,alo,ahi,ndim,map,omap,11,params,work,speed,status,failed)
+      call check(status==HY_OK,'constant pipeline status')
+      call check(speed>0._rk,'signal speed')
+      @hy_loadHydroCell(data,map,b,1,1,1,ql)@
+      @hy_primitiveToConservative(ql,ul)@
+      do d=1,ndim
+        @hy_hydroPhysicalFlux(ql,ul,d,expected)@
+        do v=1,5
+          call close(@face_ref(flux,omap(v),b,d,1,1,1)@,expected(v),'constant flux')
+        end do
+      end do
+    end do
+  end do
+  ! Exact preservation of a linear profile on the five-point stencil.
+  stencil=[-1._rk,0._rk,1._rk,2._rk,3._rk]
+  @hy_wenoZCandidatesAndWeights(stencil,params%weno_epsilon,cm,cp,wm,wp)@
+  @hy_finishReconstruction(stencil(0),1._rk,cm,cp,wm,wp,qm,qplus)@
+  call close(qm,0.5_rk,'linear negative reconstruction')
+  call close(qplus,1.5_rk,'linear positive reconstruction')
+  @hy_finishReconstruction(stencil(0),0._rk,cm,cp,wm,wp,qm,qplus)@
+  call close(qm,1._rk,'flattened reconstruction')
+  call close(qplus,1._rk,'flattened reconstruction')
+  ! Input expressions are evaluated once despite repeated use in the body.
+  @hy_finishReconstruction(nextCenter(),0._rk,cm,cp,wm,wp,qm,qplus)@
+  call check(evaluations==1,'macro argument evaluated once')
+  call close(qm,1._rk,'expression argument result')
+  ! Stationary contact: density jump, equal pressure/velocity; HLLC resolves it.
+  ql=[1._rk,0._rk,0._rk,0._rk,1._rk,1.4_rk,2.5_rk]
+  qr=ql; qr(QRHO)=2._rk
+  call solve(ql,qr,1,f)
+  call check(maxval(abs(f-[0._rk,1._rk,0._rk,0._rk,0._rk]))<1.e-12_rk,'stationary contact')
+  ! Sod interface, analytical expectations from Davis bounds and HLLC formulas.
+  qr=[0.125_rk,0._rk,0._rk,0._rk,0.1_rk,1.4_rk,0.25_rk]
+  call solve(ql,qr,1,f)
+  expected=[0.43026034786179024_rk,0.4909090909090909_rk,0._rk,0._rk,1.1617029392268339_rk]
+  call check(maxval(abs(f-expected))<1.e-12_rk,'Sod HLLC flux')
+  @hy_selectHLLEFlux(ul,ur,fl,fr,sl,sr,f,status)@
+  call check(status==HY_OK,'HLLE status')
+  expected=[0.5176569810212164_rk,0.55_rk,0._rk,0._rk,1.3311179511974138_rk]
+  call check(maxval(abs(f-expected))<1.e-12_rk,'Sod HLLE flux')
+  ! Actual piecewise-constant face pipeline; verify hybrid and original-state viscosity.
+  params%flattening=.false.; params%hybrid=.true.; params%shock_marker_present=.true.
+  params%viscosity=0.2_rk
+  ql=[1._rk,0.5_rk,0._rk,0._rk,1._rk,1.4_rk,2.5_rk]
+  qr=[0.125_rk,-0.5_rk,0._rk,0._rk,0.1_rk,1.4_rk,0.25_rk]
+  do k=alo(3),ahi(3)
+    do j=alo(2),ahi(2)
+      do i=alo(1),ahi(1)
+        q=qr
+        if (i<1) q=ql
+        q(QEINT)=q(QEINT)/q(QRHO)
+        do v=1,7
+          @cell_ref(data,map(v),2,i,j,k)@=q(v)
+        end do
+        @cell_ref(data,11,2,i,j,k)@=1._rk
+      end do
+    end do
+  end do
+  @hy_estimateHydroWaveSpeeds(ql,qr,1,params,sl,sr,speed,vacuum,status)@
+  @hy_primitiveToConservative(ql,ul)@; @hy_primitiveToConservative(qr,ur)@
+  @hy_hydroPhysicalFlux(ql,ul,1,fl)@; @hy_hydroPhysicalFlux(qr,ur,1,fr)@
+  @hy_selectHLLEFlux(ul,ur,fl,fr,sl,sr,expected,status)@
+  expected=expected+0.2_rk*(ul-ur)
+  call hy_getFaceFlux(data,flux,2,lo,hi,alo,ahi,1,map,omap,11,params,work,speed,status,failed)
+  call check(status==HY_OK,'hybrid viscosity pipeline')
+  do v=1,5
+    call close(@face_ref(flux,omap(v),2,1,1,1,1)@,expected(v),'hybrid viscosity flux')
+  end do
+  ! The compression predicate compares forward and current velocities.
+  params%flattening=.true.
+  @hy_flatteningAtCell(data,map,2,0,1,1,1,params,qm,status)@
+  call check(status==HY_OK,'compression flattening status')
+  call close(qm,(0.75_rk-0.9_rk/1.4_rk)/0.5_rk,'compression flattening sensor')
+  params%flattening=.false.
+  ! Floors must leave supplied internal-energy density and gamma untouched.
+  q=[-1._rk,0._rk,0._rk,0._rk,-2._rk,1.4_rk,3._rk]
+  @hy_repairHydroState(q,params)@
+  call close(q(QRHO),params%density_floor,'density floor')
+  call close(q(QP),params%pressure_floor,'pressure floor')
+  call close(q(QEINT),3._rk,'energy unchanged by floors')
+  ! Successful vacuum Riemann flux must still receive viscosity.
+  params%tiny_state=2._rk
+  call hy_getFaceFlux(data,flux,2,lo,hi,alo,ahi,1,map,omap,11,params,work,speed,status,failed)
+  call check(status==HY_OK,'vacuum pipeline')
+  expected=0.2_rk*(ul-ur)
+  do v=1,5
+    call close(@face_ref(flux,omap(v),2,1,1,1,1)@,expected(v),'vacuum viscosity')
+  end do
+  ! Invalid neighborhoods and thermodynamic states have explicit failures.
+  call hy_getFaceFlux(data,flux,1,lo,hi,lo,hi,3,map,omap,11,params,work,speed,status,failed)
+  call check(status==HY_BAD_INPUT,'missing ghosts rejected')
+  params%tiny_state=0._rk; ql(QGAMMA)=-1._rk
+  @hy_estimateHydroWaveSpeeds(ql,qr,1,params,sl,sr,speed,vacuum,status)@
+  call check(status==HY_BAD_STATE,'negative sound speed rejected')
+  @hy_releaseWorkspace(work)@
+  print *, 'hydro tests passed'
+contains
+  function nextCenter() result(value)
+    real(rk) :: value
+    evaluations=evaluations+1
+    value=1._rk
+  end function
+  subroutine check(condition,message)
+    logical, intent(in) :: condition
+    character(*), intent(in) :: message
+    if (.not.condition) then
+      print *, 'FAIL: ',message
+      stop 1
+    end if
+  end subroutine
+  subroutine close(actual,wanted,message)
+    real(rk), intent(in) :: actual,wanted
+    character(*), intent(in) :: message
+    call check(abs(actual-wanted)<1.e-12_rk*max(1._rk,abs(wanted)),message)
+  end subroutine
+  subroutine solve(left,right,dir,result)
+    !$macro_imports
+    real(rk), intent(in) :: left(7),right(7)
+    integer, intent(in) :: dir
+    real(rk), intent(out) :: result(5)
+    !$macro_declarations
+    @hy_estimateHydroWaveSpeeds(left,right,dir,params,sl,sr,speed,vacuum,status)@
+    call check(status==HY_OK,'wave speeds')
+    @hy_primitiveToConservative(left,ul)@; @hy_primitiveToConservative(right,ur)@
+    @hy_hydroPhysicalFlux(left,ul,dir,fl)@; @hy_hydroPhysicalFlux(right,ur,dir,fr)@
+    @hy_computeHydroContact(left,right,dir,sl,sr,contact,pstar,status)@
+    call check(status==HY_OK,'contact state')
+    @hy_computeHydroStarState(left,ul,dir,sl,contact,pstar,usl,status)@
+    call check(status==HY_OK,'left star state')
+    @hy_computeHydroStarState(right,ur,dir,sr,contact,pstar,usr,status)@
+    call check(status==HY_OK,'right star state')
+    @hy_selectHLLCFlux(ul,ur,usl,usr,fl,fr,sl,sr,contact,result)@
+  end subroutine
+end program

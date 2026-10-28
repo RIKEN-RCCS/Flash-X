@@ -242,4 +242,135 @@ module gr_mpoleData
   type (cellData2D), allocatable, save :: gr_mpoleQdataCells2D             (:,:)
   type (cellData3D), allocatable, save :: gr_mpoleQdataCells3D             (:,:)
 
+  public :: gr_mpoleAllocateRadialArrays
+
+contains
+
+!****if* source/Grid/GridSolvers/Multipole_new/gr_mpoleAllocateRadialArrays
+! NAME
+!
+!  gr_mpoleAllocateRadialArrays
+!
+! SYNOPSIS
+!
+!  gr_mpoleAllocateRadialArrays (gr_mpoleMomRI,        &
+!                                 gr_mpoleMomentR,      &
+!                                 gr_mpoleMomentI,      &
+!                                 gr_mpoleScratch,      &
+!                                 gr_mpoleQRadii,       &
+!                                 gr_mpoleQDampingR,    &
+!                                 gr_mpoleQDampingI,    &
+!                                 gr_mpoleQused,        &
+!                                 gr_mpoleMaxLM,        &
+!                                 gr_mpoleMaxQ)
+!
+! DESCRIPTION
+!
+!  Allocates the radial multi-bin arrays. Before this routine can be called,
+!  the maximum number of radial bins for the current iteration must have
+!  been established.
+!
+!***
+
+subroutine gr_mpoleAllocateRadialArrays (gr_mpoleMomRI,        &
+                                         gr_mpoleMomentR,      &
+                                         gr_mpoleMomentI,      &
+                                         gr_mpoleScratch,      &
+                                         gr_mpoleQRadii,       &
+                                         gr_mpoleQDampingR,    &
+                                         gr_mpoleQDampingI,    &
+                                         gr_mpoleQused,        &
+                                         gr_mpoleMaxLM,        &
+                                         gr_mpoleMaxQ)
+
+  use Driver_interface,  ONLY : Driver_abort
+
+  implicit none
+
+  real,    allocatable, intent (inout) :: gr_mpoleMomRI     (:,:,:)
+  real,    allocatable, intent (inout) :: gr_mpoleMomentR   (:,:)
+  real,    allocatable, intent (inout) :: gr_mpoleMomentI   (:,:)
+  real,    allocatable, intent (inout) :: gr_mpoleScratch   (:,:,:)
+  real,    allocatable, intent (inout) :: gr_mpoleQRadii    (:)
+  real,    allocatable, intent (inout) :: gr_mpoleQDampingR (:)
+  real,    allocatable, intent (inout) :: gr_mpoleQDampingI (:)
+  integer, allocatable, intent (inout) :: gr_mpoleQused     (:)
+
+  integer,              intent (in)    :: gr_mpoleMaxLM
+  integer,              intent (in)    :: gr_mpoleMaxQ
+
+  integer :: status
+!
+!
+!       ...Allocate the radial multi-bin moment arrays and the corresponding
+!          scratch array. Note the extra outer radial bin for the irregular
+!          moment array and the extra inner radial bin for the regular moment
+!          array!
+!
+!
+  allocate (gr_mpoleMomRI(1:gr_mpoleMaxLM,1:gr_mpoleMaxQ,2))
+  allocate (gr_mpoleMomentR (1:gr_mpoleMaxLM,0:gr_mpoleMaxQ  ), stat = status)
+
+  if (status > 0) then
+      call Driver_abort ('[gr_mpoleAllocateRadialArrays] ERROR: gr_mpoleMomentR allocate failed')
+  end if
+
+  allocate (gr_mpoleMomentI (1:gr_mpoleMaxLM,1:gr_mpoleMaxQ+1), stat = status)
+
+  if (status > 0) then
+      call Driver_abort ('[gr_mpoleAllocateRadialArrays] ERROR: gr_mpoleMomentI allocate failed')
+  end if
+!!$  nullify(gr_mpoleMomentR)
+!!$  nullify(gr_mpoleMomentI)
+!!$  gr_mpoleMomentR => gr_mpoleMomRI(:,:,1)
+!!$  gr_mpoleMomentI => gr_mpoleMomRI(:,:,2)
+  allocate (gr_mpoleScratch (1:gr_mpoleMaxLM,1:gr_mpoleMaxQ,2  ), stat = status)
+
+  if (status > 0) then
+      call Driver_abort ('[gr_mpoleAllocateRadialArrays] ERROR: gr_mpoleScratch allocate failed')
+  end if
+!
+!
+!       ...Allocate the radial multi-bin radii array.
+!
+!
+  allocate (gr_mpoleQRadii (0:gr_mpoleMaxQ), stat = status)
+
+  if (status > 0) then
+      call Driver_abort ('[gr_mpoleAllocateRadialArrays] ERROR: gr_mpoleQRadii allocate failed')
+  end if
+!
+!
+!       ...Allocate the radial multi-bin damping arrays.
+!
+!
+  allocate (gr_mpoleQDampingR (0:gr_mpoleMaxQ  ), stat = status)
+
+  if (status > 0) then
+      call Driver_abort ('[gr_mpoleAllocateRadialArrays] ERROR: gr_mpoleQDampingR allocate failed')
+  end if
+
+  allocate (gr_mpoleQDampingI (1:gr_mpoleMaxQ+1), stat = status)
+
+  if (status > 0) then
+      call Driver_abort ('[gr_mpoleAllocateRadialArrays] ERROR: gr_mpoleQDampingI allocate failed')
+  end if
+!
+!
+!       ...Allocate the radial multi-bin monitoring array.
+!
+!
+  allocate (gr_mpoleQused (1:gr_mpoleMaxQ), stat = status)
+
+  if (status > 0) then
+      call Driver_abort ('[gr_mpoleAllocateRadialArrays] ERROR: gr_mpoleQused allocate failed')
+  end if
+!
+!
+!       Done.
+!
+!
+  return
+end subroutine gr_mpoleAllocateRadialArrays
+
 end module gr_mpoleData

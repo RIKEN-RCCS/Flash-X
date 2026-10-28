@@ -6,7 +6,7 @@ PPDEFINE IO_HDF5_SERIAL
 DEFAULT PM
 
 
-IF Grid=='UG'
+IF Grid in ['UG','UGSpatialFirst']
    DEFAULT UG
 ELSEIF Grid=='Amrex'
    DEFAULT AM

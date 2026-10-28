@@ -5,7 +5,7 @@ DEFAULT PM
 USESETUPVARS Grid, fixedBlockSize, typeIO, unifyFS
 PPDEFINE IO_HDF5_PARALLEL
 
-IF Grid=='UG'
+IF Grid in ['UG','UGSpatialFirst']
    DEFAULT UG
 ELSEIF Grid=='Amrex'
    DEFAULT AM

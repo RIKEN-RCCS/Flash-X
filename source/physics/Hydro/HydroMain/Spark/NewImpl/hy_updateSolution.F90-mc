@@ -1,0 +1,72 @@
+module newimpl_update
+  use newimpl_hydro, only: cell_field,flux_field,HY_OK,HY_BAD_INPUT,HY_BAD_STATE
+  use, intrinsic :: ieee_arithmetic, only: ieee_is_finite
+  implicit none
+  private
+  integer, parameter :: rk=selected_real_kind(15,307)
+  public :: hy_updateSolution
+contains
+  subroutine hy_updateSolution(referenceState,currentState,faceFlux,gravity, &
+      block,cellLo,cellHi,nDim,spacing,coefficients,dt,dtOld, &
+      stateMap,fluxMap,gravityMap,potentialMap,densityFloor,energyFloor, &
+      gravityEnabled,potentialEnabled,status,failedCell)
+    !$macro_imports
+    type(cell_field), intent(in) :: referenceState,gravity
+    type(cell_field), intent(inout) :: currentState
+    type(flux_field), intent(in) :: faceFlux
+    integer, intent(in) :: block,cellLo(3),cellHi(3),nDim
+    ! stateMap: density, ux, uy, uz, ENER, EINT. potentialMap: GPOT, GPOL.
+    integer, intent(in) :: stateMap(6),fluxMap(5),gravityMap(3),potentialMap(2)
+    real(rk), intent(in) :: spacing(3),coefficients(3),dt,dtOld,densityFloor,energyFloor
+    logical, intent(in) :: gravityEnabled,potentialEnabled
+    integer, intent(out) :: status,failedCell(3)
+    integer :: i,j,k
+    real(rk) :: theta,u0(5),us(5),source(5),divergence(5),updated(5)
+    real(rk) :: rho,velocity(3),totalEnergy,internalEnergy,phi0,phiOld,phiStage,phiNew
+    !$macro_declarations
+    status=HY_BAD_INPUT; failedCell=0
+    if (nDim<1 .or. nDim>3 .or. block<1 .or. any(cellHi<cellLo)) return
+    if (any(stateMap<1) .or. any(fluxMap<1)) return
+    if (gravityEnabled .and. any(gravityMap<1)) return
+    if (potentialEnabled .and. any(potentialMap<1)) return
+    if (.not.all(ieee_is_finite(spacing(1:nDim))) .or. any(spacing(1:nDim)<=0._rk)) return
+    if (.not.all(ieee_is_finite(coefficients))) return
+    if (.not.all(ieee_is_finite([dt,densityFloor,energyFloor]))) return
+    if (densityFloor<=0._rk .or. energyFloor<0._rk) return
+    if (potentialEnabled) then
+      if (.not.ieee_is_finite(dtOld) .or. dtOld==0._rk) return
+    end if
+    theta=coefficients(3)*dt
+    if (.not.ieee_is_finite(theta)) return
+    do k=cellLo(3),cellHi(3)
+      do j=cellLo(2),cellHi(2)
+        do i=cellLo(1),cellHi(1)
+          failedCell=[i,j,k]; status=HY_BAD_STATE
+          @hy_loadUpdateConservative(referenceState,stateMap,block,i,j,k,u0)@
+          @hy_loadUpdateConservative(currentState,stateMap,block,i,j,k,us)@
+          @hy_updateGravitySource(us,gravity,gravityMap,block,i,j,k,gravityEnabled,source)@
+          @hy_updateFluxDivergence(faceFlux,faceFlux,faceFlux,fluxMap,block,i,j,k,nDim,spacing,divergence)@
+          if (.not.all(ieee_is_finite(u0)) .or. .not.all(ieee_is_finite(us))) return
+          if (.not.all(ieee_is_finite(source)) .or. .not.all(ieee_is_finite(divergence))) return
+          @hy_combineUpdate(u0,us,source,divergence,coefficients,theta,updated)@
+          if (.not.all(ieee_is_finite(updated))) return
+          @hy_recoverUpdatedHydro(updated,densityFloor,energyFloor,rho,velocity,totalEnergy,internalEnergy)@
+          if (.not.all(ieee_is_finite([rho,velocity,totalEnergy,internalEnergy]))) return
+          if (potentialEnabled) then
+            phi0=@cell_ref(referenceState,potentialMap(1),block,i,j,k)@
+            phiOld=@cell_ref(referenceState,potentialMap(2),block,i,j,k)@
+            phiStage=@cell_ref(currentState,potentialMap(1),block,i,j,k)@
+            if (.not.all(ieee_is_finite([phi0,phiOld,phiStage]))) return
+            @hy_extrapolatePotential(phi0,phiOld,phiStage,coefficients,theta,dtOld,phiNew)@
+            if (.not.ieee_is_finite(phiNew)) return
+          end if
+          @hy_storeUpdatedHydro(currentState,stateMap,block,i,j,k,rho,velocity,totalEnergy,internalEnergy)@
+          if (potentialEnabled) then
+            @cell_ref(currentState,potentialMap(1),block,i,j,k)@=phiNew
+          end if
+        end do
+      end do
+    end do
+    status=HY_OK; failedCell=0
+  end subroutine
+end module

@@ -1,0 +1,127 @@
+! Example Grid provider: uniform periodic 1D blocks, independent of storage layout.
+module periodic_grid_example
+  use newimpl_hydro, only: cell_field,flux_field,HY_OK,HY_BAD_INPUT,HY_BAD_STATE
+  use hydro_grid_contract
+  use, intrinsic :: ieee_arithmetic, only: ieee_is_finite
+  implicit none
+  private
+  integer, parameter :: rk=hydro_kind
+  type, extends(hydro_grid_context_t), public :: periodic_grid_t
+    integer :: cellsPerBlock=0,nBlocks=0
+    real(rk) :: gamma=1.4_rk,length=1._rk
+  end type
+  public :: periodic_describe,periodic_fillGuards,periodic_synchronizeFlux,serial_reduceLimits,idealGas_eos
+contains
+  subroutine periodic_describe(context,nCells,nBlocks,blocks,status)
+    type(periodic_grid_t), intent(out) :: context
+    integer, intent(in) :: nCells,nBlocks
+    type(hydro_block_t), allocatable, intent(out) :: blocks(:)
+    integer, intent(out) :: status
+    integer :: b
+    status=HY_BAD_INPUT
+    if (nCells<8 .or. nBlocks<1) return
+    if (mod(nCells,nBlocks)/=0) return
+    context%cellsPerBlock=nCells/nBlocks; context%nBlocks=nBlocks
+    allocate(blocks(nBlocks))
+    do b=1,nBlocks
+      blocks(b)%block=b; blocks(b)%lo=1; blocks(b)%hi=[context%cellsPerBlock,1,1]
+      blocks(b)%guardLo=[-2,1,1]; blocks(b)%guardHi=[context%cellsPerBlock+3,1,1]
+      blocks(b)%spacing=[context%length/nCells,1._rk,1._rk]
+      blocks(b)%volume=blocks(b)%spacing(1); blocks(b)%faceArea=1._rk
+    end do
+    status=HY_OK
+  end subroutine
+
+  subroutine periodic_fillGuards(context,state,blocks,nVars,status)
+    !$macro_imports
+    class(hydro_grid_context_t), intent(inout) :: context
+    type(cell_field), intent(inout) :: state
+    type(hydro_block_t), intent(in) :: blocks(:)
+    integer, intent(in) :: nVars
+    integer, intent(out) :: status
+    integer :: n,b,i,v,globalCell,donor,donorCell,nTotal
+    !$macro_declarations
+    status=HY_BAD_INPUT
+    select type(context)
+    type is(periodic_grid_t)
+      nTotal=context%nBlocks*context%cellsPerBlock
+      do n=1,size(blocks)
+        b=blocks(n)%block
+        do i=blocks(n)%guardLo(1),blocks(n)%guardHi(1)
+          if (i>=blocks(n)%lo(1) .and. i<=blocks(n)%hi(1)) cycle
+          globalCell=modulo((b-1)*context%cellsPerBlock+i-1,nTotal)
+          donor=globalCell/context%cellsPerBlock+1; donorCell=modulo(globalCell,context%cellsPerBlock)+1
+          do v=1,nVars
+            @cell_ref(state,v,b,i,1,1)@=@cell_ref(state,v,donor,donorCell,1,1)@
+          end do
+        end do
+      end do
+      status=HY_OK
+    end select
+  end subroutine
+
+  subroutine periodic_synchronizeFlux(context,flux,blocks,fluxMap,nDim,status)
+    !$macro_imports
+    class(hydro_grid_context_t), intent(inout) :: context
+    type(flux_field), intent(inout) :: flux
+    type(hydro_block_t), intent(in) :: blocks(:)
+    integer, intent(in) :: fluxMap(5),nDim
+    integer, intent(out) :: status
+    integer :: n,b,next,v,i
+    !$macro_declarations
+    status=HY_BAD_INPUT
+    select type(context)
+    type is(periodic_grid_t)
+      if (nDim/=1) return
+      do n=1,size(blocks)
+        b=blocks(n)%block; next=modulo(b,context%nBlocks)+1; i=blocks(n)%hi(1)+1
+        do v=1,5
+          @face_ref(flux,fluxMap(v),b,1,i,1,1)@=@face_ref(flux,fluxMap(v),next,1,1,1,1)@
+        end do
+      end do
+      status=HY_OK
+    end select
+  end subroutine
+
+  subroutine serial_reduceLimits(context,localDt,localSpeed,localLoc,globalDt,globalSpeed,globalLoc,status)
+    class(hydro_grid_context_t), intent(inout) :: context
+    real(rk), intent(in) :: localDt,localSpeed
+    integer, intent(in) :: localLoc(5)
+    real(rk), intent(out) :: globalDt,globalSpeed
+    integer, intent(out) :: globalLoc(5),status
+    globalDt=localDt; globalSpeed=localSpeed; globalLoc=localLoc; status=HY_OK
+  end subroutine
+
+  subroutine idealGas_eos(context,state,blocks,inputMap,status)
+    !$macro_imports
+    class(hydro_grid_context_t), intent(inout) :: context
+    type(cell_field), intent(inout) :: state
+    type(hydro_block_t), intent(in) :: blocks(:)
+    integer, intent(in) :: inputMap(7)
+    integer, intent(out) :: status
+    integer :: n,b,i
+    real(rk) :: rho,eint
+    !$macro_declarations
+    status=HY_BAD_INPUT
+    select type(context)
+    type is(periodic_grid_t)
+      if (.not.ieee_is_finite(context%gamma) .or. context%gamma<=1._rk) return
+      do n=1,size(blocks)
+        b=blocks(n)%block
+        do i=blocks(n)%lo(1),blocks(n)%hi(1)
+          rho=@cell_ref(state,inputMap(1),b,i,1,1)@
+          eint=@cell_ref(state,inputMap(7),b,i,1,1)@
+          if (.not.all(ieee_is_finite([rho,eint]))) then
+            status=HY_BAD_STATE; return
+          end if
+          if (rho<=0._rk .or. eint<=0._rk) then
+            status=HY_BAD_STATE; return
+          end if
+          @cell_ref(state,inputMap(5),b,i,1,1)@=(context%gamma-1._rk)*rho*eint
+          @cell_ref(state,inputMap(6),b,i,1,1)@=context%gamma
+        end do
+      end do
+      status=HY_OK
+    end select
+  end subroutine
+end module

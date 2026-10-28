@@ -41,7 +41,6 @@
 !! @param loGC            Lower indices including guard cells
 !<
 
-!!Reorder(4):fluxBuf[XYZ],Uin
 !!NOVARIANTS
 
 subroutine hy_rk_correctFluxes(Uin, blkLimits, &
@@ -69,7 +68,7 @@ subroutine hy_rk_correctFluxes(Uin, blkLimits, &
 
   integer, intent(IN) :: geometry, lo(3), loGC(3)
   real, pointer :: Uin(:, :, :, :)
-  real, dimension(1:, lo(1):, lo(2):, lo(3):), intent(IN) :: fluxBufX, fluxBufY, fluxBufZ
+  real, @M dim4, intent(IN) :: fluxBufX, fluxBufY, fluxBufZ
   integer, dimension(LOW:HIGH, MDIM), intent(IN) :: blkLimits
   real, dimension(loGC(1):, loGC(2):, loGC(3):), intent(IN) :: fareaX, fareaY, fareaZ, cvol
   real, dimension(loGC(1):), intent(IN) :: xCenter, xLeft, xRight
@@ -95,10 +94,10 @@ subroutine hy_rk_correctFluxes(Uin, blkLimits, &
      do j = blkLimits(LOW,JAXIS), blkLimits(HIGH,JAXIS)
         i = blkLimits(LOW,IAXIS)
         ! Point to old/intermediate states
-        Vstar => Uin(:,i,j,k)
+        Vstar => Uin(@M blkall(i,j,k))
         ! Point to the correct fluxes
         !~ (-) sign b/c fluxes are leaving on the low side
-        dFlux = -fluxBufX(:,i,j,k)
+        dFlux = -fluxBufX(@M blkall(i,j,k))
         dx = deltas(IAXIS)
         ! Geometric factors for non-Cartesian geometries
         if (isFlux) then
@@ -125,10 +124,10 @@ subroutine hy_rk_correctFluxes(Uin, blkLimits, &
      do j = blkLimits(LOW,JAXIS), blkLimits(HIGH,JAXIS)
         i = blkLimits(HIGH,IAXIS)
         ! Point to old/intermediate states
-        Vstar => Uin(:,i,j,k)
+        Vstar => Uin(@M blkall(i,j,k))
         ! Point to the correct fluxes
         ! Positive b/c fluxes are entering on the high side
-        dFlux = fluxBufX(:,i+1,j,k)
+        dFlux = fluxBufX(@M blkalloff(i,+1,j,+0,k,+0))
         dx = deltas(IAXIS)
         ! Get geometric factors and sources
         if (isFlux) then
@@ -157,9 +156,9 @@ subroutine hy_rk_correctFluxes(Uin, blkLimits, &
      do i = blkLimits(LOW,IAXIS), blkLimits(HIGH,IAXIS)
         j = blkLimits(LOW,JAXIS)
         ! Point to old/intermediate states
-        Vstar => Uin(:,i,j,k)
+        Vstar => Uin(@M blkall(i,j,k))
         ! Point to the correct fluxes
-        dFlux = -fluxBufY(:,i,j,k)
+        dFlux = -fluxBufY(@M blkall(i,j,k))
         fac = 1.0
         dx = deltas(JAXIS)
         if (isFlux) then
@@ -186,9 +185,9 @@ subroutine hy_rk_correctFluxes(Uin, blkLimits, &
      do i = blkLimits(LOW,IAXIS), blkLimits(HIGH,IAXIS)
         j = blkLimits(HIGH,JAXIS)
         ! Point to old/intermediate states
-        Vstar => Uin(:,i,j,k)
+        Vstar => Uin(@M blkall(i,j,k))
         ! Point to the correct fluxes
-        dFlux = fluxBufY(:,i,j+1,k)
+        dFlux = fluxBufY(@M blkalloff(i,+0,j,+1,k,+0))
         dx = deltas(JAXIS)
         if (isFlux) then
            @M hy_geom_flux_dxdv
@@ -215,9 +214,9 @@ subroutine hy_rk_correctFluxes(Uin, blkLimits, &
      do i = blkLimits(LOW,IAXIS), blkLimits(HIGH,IAXIS)
         k = blkLimits(LOW,KAXIS)
         ! Point to old/intermediate states
-        Vstar => Uin(:,i,j,k)
+        Vstar => Uin(@M blkall(i,j,k))
         ! Point to the correct fluxes
-        dFlux = -fluxBufZ(:,i,j,k)
+        dFlux = -fluxBufZ(@M blkall(i,j,k))
         fac = 1.0
         dx = deltas(KAXIS)
         if (isFlux) then
@@ -243,9 +242,9 @@ subroutine hy_rk_correctFluxes(Uin, blkLimits, &
      do i = blkLimits(LOW,IAXIS), blkLimits(HIGH,IAXIS)
         k = blkLimits(HIGH,KAXIS)
         ! Point to old/intermediate states
-        Vstar => Uin(:,i,j,k)
+        Vstar => Uin(@M blkall(i,j,k))
         ! Point to the correct fluxes
-        dFlux = fluxBufZ(:,i,j,k+1)
+        dFlux = fluxBufZ(@M blkalloff(i,+0,j,+0,k,+1))
         dx = deltas(KAXIS)
         if (isFlux) then
            @M hy_geom_flux_dxdv

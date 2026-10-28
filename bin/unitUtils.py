@@ -771,7 +771,7 @@ class UnitList:
 
         # Adjust maxblocks
         if GVars.maxblocks==None: # using UG
-           if grid == 'UG':
+           if grid in ('UG', 'UGSpatialFirst'):
              GVars.maxblocks = 1
            elif grid == 'AMR':  # using paramesh or Amrex or something like that
              if GVars.dimension==3: 	 
@@ -785,7 +785,7 @@ class UnitList:
                 GVars.maxblocks = 1000 	 
 
         # check if we are trying nonfbs and not UG
-        if not GVars.setupVars.get("fixedBlockSize") and (grid != 'UG' and grid != 'Chombo'):
+        if not GVars.setupVars.get("fixedBlockSize") and (grid not in ('UG', 'UGSpatialFirst', 'Chombo')):
            GVars.out.put("Non-Fixed Block size works only with UG",globals.ERROR)
            raise SetupError("Change your grid or switch to fixed block size")
 

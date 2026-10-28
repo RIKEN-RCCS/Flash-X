@@ -56,7 +56,6 @@ subroutine Grid_beginPoisson (iSoln,                   &
 
   use gr_mpoleInterface, ONLY : gr_mpoleCenterOfExpansion,     &
                                 gr_mpoleRadialSampling,        &
-                                gr_mpoleAllocateRadialArrays,  &
                                 gr_mpoleSetRadialBinData,      &
                                 gr_mpolePrintRadialInfo,       &
                                 gr_mpoleMoments,               &
@@ -64,7 +63,18 @@ subroutine Grid_beginPoisson (iSoln,                   &
 
   use gr_mpoleData,      ONLY : gr_mpoleMomentsDump,           &
                                 gr_mpoleMultiThreading,        &
-                                gr_mpoleRadialInfoPrint
+                                gr_mpoleRadialInfoPrint,       &
+                                gr_mpoleMomRI,                 &
+                                gr_mpoleMomentR,               &
+                                gr_mpoleMomentI,               &
+                                gr_mpoleScratch,               &
+                                gr_mpoleQRadii,                &
+                                gr_mpoleQDampingR,             &
+                                gr_mpoleQDampingI,             &
+                                gr_mpoleQused,                 &
+                                gr_mpoleMaxLM,                 &
+                                gr_mpoleMaxQ,                  &
+                                gr_mpoleAllocateRadialArrays
 
   implicit none
 
@@ -96,7 +106,16 @@ subroutine Grid_beginPoisson (iSoln,                   &
   !
    call gr_mpoleCenterOfExpansion    (iSrc)
    call gr_mpoleRadialSampling       ()
-   call gr_mpoleAllocateRadialArrays ()
+   call gr_mpoleAllocateRadialArrays (gr_mpoleMomRI,        &
+                                       gr_mpoleMomentR,      &
+                                       gr_mpoleMomentI,      &
+                                       gr_mpoleScratch,      &
+                                       gr_mpoleQRadii,       &
+                                       gr_mpoleQDampingR,    &
+                                       gr_mpoleQDampingI,    &
+                                       gr_mpoleQused,        &
+                                       gr_mpoleMaxLM,        &
+                                       gr_mpoleMaxQ)
    call gr_mpoleSetRadialBinData     ()
 !
 !

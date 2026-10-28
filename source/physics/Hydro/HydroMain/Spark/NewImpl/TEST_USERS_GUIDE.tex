@@ -1,0 +1,159 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath,booktabs,longtable,listings}
+\usepackage[hidelinks]{hyperref}
+\lstset{basicstyle=\ttfamily\small,breaklines=true,columns=fullflexible,frame=single,showstringspaces=false}
+\newcommand{\file}[1]{\texttt{\detokenize{#1}}}
+\title{NewImpl Hydrodynamics Tests: User's Guide}
+\author{Flash-X Spark standalone implementation}
+\date{6 October 2026}
+\setlength{\emergencystretch}{2em}
+\begin{document}
+\maketitle
+\tableofcontents
+\section{Purpose and prerequisites}
+The tests in \file{source/physics/Hydro/HydroMain/Spark/NewImpl} check macro expansion, hydrodynamic kernels, Flash-X calling-convention adapters, and a complete periodic shock-tube calculation. This guide describes the supplied runners; manual expansion of each test is unnecessary.
+
+You need Python 3 and GNU Fortran (\file{gfortran}) on your executable search path. Python dependencies are all in the standard library. Compiled sources target Fortran 2003; generated code does not require Fortran 2008 \file{BLOCK}. Keep NewImpl in its Spark checkout because wrapper tests copy the parent directory's \file{Spark.h}. A configured Flash-X application and MPI are unnecessary. LaTeX is needed only to typeset this guide.
+
+All commands below assume:
+\begin{lstlisting}
+cd /path/to/Flash-X/source/physics/Hydro/HydroMain/Spark/NewImpl
+python3 --version
+gfortran --version
+\end{lstlisting}
+
+\section{Run all tests}
+\begin{lstlisting}
+python3 test_newimpl.py -v
+python3 test_standalone.py -v
+\end{lstlisting}
+The first runner currently has ten test methods. The second has one method with multiple numerical subcases. Success ends with \file{OK} and exit status zero. Assertions, compilation errors, or failed numerical executables produce nonzero status. Builds and outputs are created in temporary directories and removed when their contexts finish.
+
+\textbf{Check for skipped tests.} Without \file{gfortran}, four Python-only macro methods still run, but compiled methods are skipped. An \file{OK (skipped=...)} result therefore does not establish numerical correctness. Test runners select \file{gfortran} directly; they have no compiler-selection option.
+
+\subsection{Run selected methods}
+The runners use Python's \file{unittest} command-line interface:
+\begin{lstlisting}
+python3 test_newimpl.py -v Tests.test_arguments Tests.test_hoisted_declarations
+python3 test_newimpl.py -v Tests.test_hydro
+python3 test_newimpl.py -v Tests.test_update
+python3 test_newimpl.py -v Tests.test_diagnostics
+python3 test_newimpl.py -v Tests.test_flashx_wrapper
+python3 test_standalone.py -v StandaloneTests.test_periodic_sod
+\end{lstlisting}
+Selecting a compiled method still runs all of that method's layouts or dimension/precision subcases. The standalone method runs its entire matrix; it has no option to select just one block count or RK order.
+
+\section{Kernel, macro, and wrapper coverage}
+\begin{longtable}{@{}p{0.35\linewidth}p{0.60\linewidth}@{}}
+\toprule
+Method in \file{test_newimpl.py} & Main checks \\
+\midrule\endhead
+\file{test_arguments} & Offset and nested-expression arguments, nested macros, malformed calls, unknown macros, and recursion errors. \\
+\file{test_scoped_helpers} & Unique names for repeated helper expansions, local exits, and one top-level face-flux subroutine. \\
+\file{test_block_metadata} & Scope metadata, hygienic local names, arguments evaluated once, derived-type components, preserved strings/comments, and invalid definitions. \\
+\file{test_hoisted_declarations} & Declarations before executable code, scopes lowered to named loops, and rejection of missing insertion markers. \\
+\file{test_hydro} & Constant/linear profiles, dimensions and block IDs, permuted field maps, contact and Sod fluxes, Riemann star states, hybrid choice, viscosity, flattening, floors, vacuum, and invalid inputs. \\
+\file{test_update} & Solution updates, primitive recovery, floors, preserved data, interior-face conservation, and parameter validation. \\
+\file{test_diagnostics} & Shock criteria, neighborhood minima, inclusive thresholds, sound speed, timestep limits/locations, geometry-dependent widths, and failures. \\
+\file{test_flashx_wrapper} & Face-flux adapter with mock Flash-X dependencies and caller-provided scratch. \\
+\file{test_update_wrapper} & Update adapter, including configured telescoping/non-telescoping storage variants. \\
+\file{test_diagnostic_wrappers} & Shock and timestep adapters with mock Flash-X dependencies. \\
+\bottomrule
+\end{longtable}
+Hydro, update, and diagnostic kernel methods run variable-first arrays, spatial-first arrays, and record storage. Each wrapper method runs dimensions 1, 2, and 3 with default real and with \file{-fdefault-real-8}. Mock dependencies test adapter behavior; this is not a full Flash-X build or simulation.
+
+Compiled checks use \file{-fcheck=all} and floating-point traps for invalid operations, division by zero, and overflow. Some kernel builds also enable warnings. A warning alone is not an assertion failure; compilation errors and runtime traps fail the run. Some kernel checks cover geometry/source-term capabilities beyond the Cartesian, gravity-free standalone example.
+
+\section{Automated periodic shock-tube test}
+\file{test_standalone.py} builds all three layouts and runs each with 128 cells to $t=0.05$, one and four blocks, and SSPRK2 and SSPRK3: twelve valid runs. Each layout also rejects 127 cells with four blocks because equal block sizes require divisibility.
+
+The ideal-gas domain is $[0,1)$ with $\gamma=1.4$, zero velocity, and
+\[
+(\rho,p)=\begin{cases}(1,1),&x<0.5,\\(0.125,0.1),&x\geq0.5.\end{cases}
+\]
+Periodic boundaries create a reversed discontinuity at the domain boundary as well as the Sod interface at $x=0.5$. Early-time comparisons near the interior interface are useful before the wave systems interact. This is not an isolated outflow-boundary shock tube.
+
+\subsection{Acceptance criteria}
+The CSV must contain 128 finite rows, with positive density, pressure, and specific internal energy. With $\Delta x=1/128$, the test computes
+\[
+M=\sum_i\rho_i\Delta x,\quad P=\sum_i\rho_i u_i\Delta x,\quad E=\sum_i\rho_i q_i\Delta x.
+\]
+Here $q$ is specific total energy. Expected totals are $M=0.5625$, $P=0$, and $E=1.375$, each to absolute tolerance $10^{-10}$. Every cell must satisfy $p=0.4\rho e$ and $q=e+u^2/2$ to absolute tolerance $10^{-10}$, where $e$ is specific internal energy.
+
+Cells with $0.512<x<0.530$ are compared with the Sod left-star plateau:
+\begin{center}
+\begin{tabular}{lrr}\toprule
+Quantity & Reference & Absolute tolerance \\
+\midrule
+Density & 0.426319428 & 0.045 \\
+Velocity & 0.927452620 & 0.055 \\
+Pressure & 0.303130178 & 0.030 \\
+\bottomrule\end{tabular}
+\end{center}
+These finite-resolution checks are distinct from conservation checks. They are neither a refinement study nor a full-profile exact-solution comparison.
+
+For each RK order separately, the variable-first one-block result is the baseline. Every other layout/decomposition must differ by less than $2\times10^{-11}$ across all CSV values. SSPRK2 and SSPRK3 are not required to match each other.
+
+\section{Build a persistent example}
+\begin{lstlisting}
+python3 build_standalone.py
+build/standalone/periodic_shock_tube 256 4 0.05 build/standalone/sod.csv 2
+\end{lstlisting}
+The output directory is \file{build/standalone}. It retains expanded \file{.f90} sources, module files, and the executable. The builder prints the executable path. Compilation uses:
+\begin{lstlisting}
+-std=f2003 -O2 -fcheck=all -ffpe-trap=invalid,zero,overflow
+\end{lstlisting}
+
+Executable arguments, in order, are:
+\begin{center}
+\begin{tabular}{cll}\toprule
+Position & Meaning & Default \\
+\midrule
+1 & Global cell count & 256 \\
+2 & Block count & 4 \\
+3 & Final time & 0.05 \\
+4 & CSV path & \file{periodic_shock_tube.csv} \\
+5 & SSPRK order & 2 \\
+\bottomrule\end{tabular}
+\end{center}
+Supply earlier positions to set a later one. The provider requires at least eight cells, positive block count, and cells divisible by blocks. Final time must be positive; RK order must be 2 or 3. Create the CSV parent directory first. Existing CSV files at the selected path are replaced.
+
+For another layout and order:
+\begin{lstlisting}
+python3 build_standalone.py --layout spatial-first --output build/spatial
+build/spatial/periodic_shock_tube 256 4 0.05 build/spatial/sod-rk3.csv 3
+python3 build_standalone.py --layout records --output build/records
+\end{lstlisting}
+Layout choices are \file{variable-first}, \file{spatial-first}, and \file{records}. Separate output directories retain independent builds. The builder accepts \file{--compiler /path/to/gfortran}, but retains GNU-style flags; it is not a portable compiler adapter. Automated runners still select \file{gfortran} from the search path.
+
+\subsection{Interpret output}
+CSV columns are \file{x}, \file{density}, \file{velocity}, \file{pressure}, \file{internal_energy}, and \file{total_energy}. Rows are owned cells in spatial order, excluding guards. Both energies are specific energies, not densities. Plot density, velocity, or pressure against $x$ using your preferred CSV plotting tool.
+
+The executable prints step count, achieved time, mass/momentum/energy changes, and maximum integrated boundary imbalance over the run. Imbalance sums right-minus-left transfers across blocks. Transfers already include face area, timestep, and RK weights, so shared periodic faces should cancel. The executable rejects total errors above $10^{-9}$ and imbalance above $10^{-12}$. A successful manual run does not perform the Python profile assertions or cross-layout comparisons.
+
+\section{Troubleshooting}
+\begin{description}
+\item[Compiler unavailable or skipped tests.] Check \file{gfortran --version} and the executable search path. The builder reports an unavailable compiler; runners skip compiled methods.
+\item[Assertion or compiler error.] Run the named method with \file{-v}. Subcases identify layout, dimension, precision, or block/RK combination. Read compiler output for generated Fortran errors.
+\item[STOP or runtime trap.] Match numbered \file{stop} statements or printed check labels to the failing Fortran test source. Bounds errors and floating-point traps may reveal bad allocation, indices, or states before Python checks run.
+\item[Advance failure.] The example reports status, failed block, and failed cell. Inspect status constants and checks in \file{hy_getFaceFlux.F90-mc} and \file{hy_prepareAdvance.F90-mc}. No failed-step retry is supplied.
+\item[Conservation/decomposition disagreement.] Inspect guard exchange, shared-face synchronization, field maps, RK weights, and integrated transfers. Do not relax tolerances merely to hide a regression.
+\item[Temporary files disappeared.] Use the persistent builder and manual run to retain expanded sources and CSV output.
+\end{description}
+Standalone exit codes distinguish parsing/options (1), mesh description (2), advance failure (3), time stagnation (4), excessive steps (5), output open failure (6), conserved-total failure (7), and flux imbalance (8). Runtime traps can terminate through another path.
+
+\section{Scope and further testing}
+These tests cover serial kernels/adapters and a 1D periodic uniform Cartesian end-to-end calculation. They do not validate MPI communication, AMR interpolation/refluxing, subcycling, multidimensional standalone mesh providers, or full Flash-X integration. The example excludes gravity, species, and magnetic fields.
+
+After macro changes, run macro and affected kernel checks, then both complete runners. After Grid-provider or driver changes, run the standalone matrix to detect decomposition dependence. Add physical comparisons/refinement studies with justified tolerances. Changing the manual example's resolution or time does not change automated acceptance criteria.
+
+See \file{STANDALONE.md} for callback contracts, field maps, scratch ownership, and the preparation/advance sequence. To typeset this guide:
+\begin{lstlisting}
+mkdir -p build/docs
+pdflatex -interaction=nonstopmode -halt-on-error -output-directory=build/docs TEST_USERS_GUIDE.tex
+pdflatex -interaction=nonstopmode -halt-on-error -output-directory=build/docs TEST_USERS_GUIDE.tex
+\end{lstlisting}
+The second pass resolves contents and references. Output is \file{build/docs/TEST_USERS_GUIDE.pdf}.
+\end{document}
