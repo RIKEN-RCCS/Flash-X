@@ -1,0 +1,52 @@
+# Flash-X makefile definitions for supercomp08 (NVHPC 26.3 nvfortran, HPC-X Open MPI, RTX 5080 cc120)
+
+NVHPC      = /opt/nvidia/hpc_sdk/Linux_x86_64/26.3
+MPI_PATH   = $(NVHPC)/comm_libs/mpi
+HDF5_PATH  = $(HOME)/opt/hdf5-par-nvhpc
+
+FCOMP   = ${MPI_PATH}/bin/mpif90
+CCOMP   = ${MPI_PATH}/bin/mpicc
+CPPCOMP = ${MPI_PATH}/bin/mpicxx
+LINK    = ${MPI_PATH}/bin/mpif90
+
+PP      = -D
+
+FMAFLAGS = -Mnofma
+GPUFLAGS = -gpu=cc120,nofma
+
+FFLAGS_OPT   = -c -O2 -r8 -i4 $(FMAFLAGS)
+FFLAGS_DEBUG = -c -g -O0 -r8 -i4 -Mbounds $(FMAFLAGS)
+FFLAGS_TEST  = -c -O0 -r8 -i4 $(FMAFLAGS)
+F90FLAGS =
+
+CFLAGS_OPT   = -c -O2 $(FMAFLAGS)
+CFLAGS_DEBUG = -c -g -O0 $(FMAFLAGS)
+CFLAGS_TEST  = -c -O0 $(FMAFLAGS)
+
+CFLAGS_HDF5 = -I${HDF5_PATH}/include -DH5_USE_18_API
+
+FFLAGS_OMP_OL = -mp=gpu $(GPUFLAGS)
+LIB_OMP_OL    = -mp=gpu $(GPUFLAGS)
+FFLAGS_OMP_HOST = -mp
+LIB_OMP_HOST    = -mp
+
+LFLAGS_OPT   = -o
+LFLAGS_DEBUG = -g -o
+LFLAGS_TEST  = -o
+
+LIB_OPT   =
+LIB_DEBUG =
+LIB_TEST  =
+
+LIB_HDF5  = -L${HDF5_PATH}/lib -lhdf5 -lz -Wl,-rpath,${HDF5_PATH}/lib
+LIB_MATH  =
+LIB_MPI   =
+
+MACHOBJ =
+
+MV = mv -f
+AR = ar -r
+RM = rm -f
+CD = cd
+RL = ranlib
+ECHO = echo
