@@ -136,14 +136,6 @@ syntax on
 autocmd BufNewFile,BufRead *.F90-mc set filetype=fortran
 ```
 
-## Containerization Workflows
-
-[comment]: ![incompFlow](https://github.com/Flash-X/Flash-X/workflows/incompFlow/badge.svg)
-[comment]: ![Sod](https://github.com/Flash-X/Flash-X/workflows/Sod/badge.svg)
-[comment]: ![Sedov](https://github.com/Flash-X/Flash-X/workflows/Sedov/badge.svg)
-
-These workflows are located in `.github/workflows` and are not part of default testing framework. Please to refer `.github/workflows/README.md` and `container/README.md` for details on containerization with **Flash-X**
-
 ## Tests
 Test specifications for individual simulations are included under ``*/tests/tests.yaml`` files in each simulation directory under ``source/Simulation/SimulationMain``. New tests should be added as enteries in the prescribed YAML format before including it as a part of suites on different platforms.
 
